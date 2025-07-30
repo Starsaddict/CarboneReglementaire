@@ -5,7 +5,7 @@ import com.example.zhuantan_calculator.functionalInterface.TargetProvider;
 
 public class LightVehicle extends Vehicles{
 
-    private Double curbWeight;
+    private Integer curbWeight;
     private Double testMass;
 
     public LightVehicle(){}
@@ -15,18 +15,6 @@ public class LightVehicle extends Vehicles{
         return getTarget();
     }
 
-    @Override
-    protected Double doComputeOilComsumption(ConvertionProvider provider, int method) {
-        String energyType = getFuelType();
-        if(energyType.equals("天然气")){
-            energyType = "天然气-CNG";
-        }
-        Double coeff = provider.getConvertCoeff(energyType,computeCarbonFuelType(),method);
-        if(coeff != null){
-            return coeff * getEnergy();
-        }
-        return null;
-    }
 
 
     private Double getTarget() {
@@ -86,7 +74,19 @@ public class LightVehicle extends Vehicles{
         }
     }
 
+    public Integer getCurbWeight() {
+        return curbWeight;
+    }
 
+    public void setCurbWeight(Integer curbWeight) {
+        this.curbWeight = curbWeight;
+    }
 
+    public Double getTestMass() {
+        return testMass;
+    }
 
+    public void setTestMass(Double testMass) {
+        this.testMass = testMass;
+    }
 }

@@ -6,31 +6,30 @@ import jakarta.persistence.*;
 
 public abstract class Vehicles {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
     private int year;
     private String enterprise;
     private String model;
     private String fuelType;
-    private Float energy;
+    private Double energy;
     private Integer grossWeight;
 
     private Integer method;
     private String carbonModel;   // 转碳车型
     private String carbonGroup;   // 转碳车组
 
+    private Integer sales;
+
+    public Integer getSales() {
+        return sales;
+    }
+
+    public void setSales(Integer sales) {
+        this.sales = sales;
+    }
+
     public Vehicles() {
     }
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
 
     public int getYear() {
         return year;
@@ -64,11 +63,11 @@ public abstract class Vehicles {
         this.fuelType = fuelType;
     }
 
-    public Float getEnergy() {
+    public Double getEnergy() {
         return energy;
     }
 
-    public void setEnergy(Float energy) {
+    public void setEnergy(Double energy) {
         this.energy = energy;
     }
 
@@ -121,7 +120,6 @@ public abstract class Vehicles {
         }
     };
 
-
     public final Double computeTarget(TargetProvider provider, int method) {
         return doComputeTarget(provider, method);
     }
@@ -132,9 +130,16 @@ public abstract class Vehicles {
         return doComputeOilComsumption(provider, method);
     }
 
-    protected abstract Double doComputeOilComsumption(ConvertionProvider provider, int method);
-
-
+    public Double doComputeOilComsumption(ConvertionProvider provider, int method) {
+        Double coeff = provider.getConvertCoeff(this, method);
+        if (coeff != null) {
+            return coeff * getEnergy();
+        }
+        return null;
+    }
+    public boolean isNewEnergy(){
+        return fuelType.equals("BEV") | fuelType.equals("FCV") | fuelType.equals("PHEV");
+    }
 
 }
 
