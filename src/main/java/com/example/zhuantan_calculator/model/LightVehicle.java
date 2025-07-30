@@ -1,11 +1,21 @@
 package com.example.zhuantan_calculator.model;
+
+import com.example.zhuantan_calculator.functionalInterface.TargetProvider;
+
 public class LightVehicle extends Vehicles{
 
     private Double curbWeight;
     private Double testMass;
 
+    public LightVehicle(){}
+
     @Override
-    public Double computeTarget(int method) {
+    protected Double doComputeTarget(TargetProvider provider, int method) {
+        return getTarget();
+    }
+
+
+    private Double getTarget() {
         if(testMass==null){
             if(curbWeight==null){
                 throw new IllegalStateException("缺少计算所需的 curbWeight 和 testMass");            }

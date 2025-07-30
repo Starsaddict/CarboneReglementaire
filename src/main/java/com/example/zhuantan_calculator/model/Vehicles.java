@@ -1,5 +1,6 @@
 package com.example.zhuantan_calculator.model;
 
+import com.example.zhuantan_calculator.functionalInterface.TargetProvider;
 import jakarta.persistence.*;
 
 public abstract class Vehicles {
@@ -103,11 +104,10 @@ public abstract class Vehicles {
     }
 
 
-    public abstract Double computeTarget(int method);
 
     public String computeCarbonFuelType(){
         if(this.carbonGroup == "N1" | this.carbonGroup == "M2" ){
-            if(this.fuelType=="柴油"){
+            if(this.fuelType == "柴油"){
                 return "柴油";
             }
             return "汽油";
@@ -119,4 +119,10 @@ public abstract class Vehicles {
             return "柴油";
         }
     };
-}
+
+
+    public final Double computeTarget(TargetProvider provider, int method) {
+        return doComputeTarget(provider, method);
+    }
+
+    protected abstract Double doComputeTarget(TargetProvider provider, int method);}
