@@ -1,5 +1,6 @@
 package com.example.zhuantan_calculator.model;
 
+import com.example.zhuantan_calculator.functionalInterface.ConvertionProvider;
 import com.example.zhuantan_calculator.functionalInterface.TargetProvider;
 
 public class LightVehicle extends Vehicles{
@@ -12,6 +13,19 @@ public class LightVehicle extends Vehicles{
     @Override
     protected Double doComputeTarget(TargetProvider provider, int method) {
         return getTarget();
+    }
+
+    @Override
+    protected Double doComputeOilComsumption(ConvertionProvider provider, int method) {
+        String energyType = getFuelType();
+        if(energyType.equals("天然气")){
+            energyType = "天然气-CNG";
+        }
+        Double coeff = provider.getConvertCoeff(energyType,computeCarbonFuelType(),method);
+        if(coeff != null){
+            return coeff * getEnergy();
+        }
+        return null;
     }
 
 
