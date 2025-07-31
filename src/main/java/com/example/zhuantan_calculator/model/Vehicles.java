@@ -141,6 +141,7 @@ public abstract class Vehicles {
         return fuelType.equals("BEV") | fuelType.equals("FCV") | fuelType.equals("PHEV");
     }
 
+
 }
 
 
