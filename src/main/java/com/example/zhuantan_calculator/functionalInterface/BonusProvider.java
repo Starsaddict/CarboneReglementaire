@@ -2,6 +2,8 @@ package com.example.zhuantan_calculator.functionalInterface;
 
 import com.example.zhuantan_calculator.model.Vehicles;
 
-public interface ConvertionProvider {
-    Double getConvertCoeff(Vehicles vehicle, int method);
+import java.util.List;
+
+public interface BonusProvider {
+    Double calculateBonus(Vehicles vehicle);
 }

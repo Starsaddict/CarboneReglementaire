@@ -12,13 +12,17 @@ public class CommercialTargetService {
     }
 
 
-    public double getTarget(int year, String carbonModel, String fuelType, Integer gvm, String gvwArea, int method){
+    public double getTarget(int year, String carbonModel, String fuelType, Integer gvm, String gvwArea, int method){ //TODO: 这里有bug
         CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
 
-        if(gvwArea == null){
+        if(gvm != null){
             return commercialTargetRepo.findTargetValue(year, carbonModel, fuelType, gvm, method);
         }else{
-            return commercialTargetRepo.findTargetValue(year,carbonModel,fuelType,gvwArea,method);
+            try{
+            return commercialTargetRepo.findTargetValue(year,carbonModel,fuelType,gvwArea,method);}
+            catch(Exception e){
+                return 100;
+            }
         }
     }
 }

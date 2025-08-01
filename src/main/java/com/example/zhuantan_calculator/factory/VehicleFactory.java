@@ -44,19 +44,4 @@ public class VehicleFactory {
         return vehicle;
     }
 
-//    public static Vehicles createVehicleFromData(String modelType, String enterprise, int year, String fuelType, String carbonEnergyType, String gvwArea, int gvm, boolean isNewEnergy, String model) {
-//        Vehicles vehicle = createVehicleByType(modelType);
-//        vehicle.setEnterprise(enterprise);
-//        vehicle.setYear(year);
-//        vehicle.setFuelType(fuelType);
-//
-//        if (vehicle instanceof LightVehicle) {
-//            ((LightVehicle) vehicle).setGvwArea(gvwArea);
-//            ((LightVehicle) vehicle).setGvm(gvm);
-//        } else if (vehicle instanceof HeavyVehicle) {
-//            ((HeavyVehicle) vehicle).setGvm(gvm);
-//        }
-//        vehicle.setModel(model);
-//        return vehicle;
-//    }
 }

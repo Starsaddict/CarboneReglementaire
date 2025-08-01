@@ -2,10 +2,7 @@ package com.example.zhuantan_calculator.repository;
 
 import com.example.zhuantan_calculator.model.CommercialTarget;
 import com.example.zhuantan_calculator.model.EnergyConversion;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityTransaction;
-import jakarta.persistence.NoResultException;
-import jakarta.persistence.TypedQuery;
+import jakarta.persistence.*;
 
 import java.util.List;
 
@@ -46,6 +43,14 @@ public class EnergyConversionRepo {
         } catch (NoResultException e){
             return null;
         }
+    }
+
+    public static void main(String[] args) {
+        EntityManagerFactory emf = Persistence.createEntityManagerFactory("zhuantanPU");
+        EntityManager em = emf.createEntityManager();
+        EnergyConversionRepo energyConversionRepo = new EnergyConversionRepo(em);
+        Double result = energyConversionRepo.findDieselCoeff("PHEV");
+        System.out.println(result);
     }
 
 }

@@ -1,8 +1,6 @@
 package com.example.zhuantan_calculator.model;
 
-import com.example.zhuantan_calculator.functionalInterface.ConvertionProvider;
-import com.example.zhuantan_calculator.functionalInterface.TargetProvider;
-import jakarta.persistence.*;
+import com.example.zhuantan_calculator.functionalInterface.*;
 
 public abstract class Vehicles {
 
@@ -103,22 +101,19 @@ public abstract class Vehicles {
         this.carbonGroup = carbonGroup;
     }
 
-
-
-    public String computeCarbonFuelType(){
-        if(this.carbonGroup == "N1" | this.carbonGroup == "M2" ){
-            if(this.fuelType.equals("柴油") ){
+    public String computeCarbonFuelType() {
+        if ("N1".equals(this.carbonGroup) || "M2".equals(this.carbonGroup)) {
+            if ("柴油".equals(this.fuelType)) {
                 return "柴油";
             }
             return "汽油";
-        }
-        else{
-            if(this.fuelType.equals("汽油")){
+        } else {
+            if ("汽油".equals(this.fuelType)) {
                 return "汽油";
             }
             return "柴油";
         }
-    };
+    }
 
     public final Double computeTarget(TargetProvider provider, int method) {
         return doComputeTarget(provider, method);
@@ -126,22 +121,44 @@ public abstract class Vehicles {
 
     protected abstract Double doComputeTarget(TargetProvider provider, int method);
 
-    public final Double computeOilComsumption(ConvertionProvider provider, int method) {
-        return doComputeOilComsumption(provider, method);
+    public final Double computeOilConsumption(ConvertionProvider provider, int method) {
+        return doComputeOilConsumption(provider, method);
     }
 
-    public Double doComputeOilComsumption(ConvertionProvider provider, int method) {
+    public Double doComputeOilConsumption(ConvertionProvider provider, int method) {
         Double coeff = provider.getConvertCoeff(this, method);
-        if (coeff != null) {
-            return coeff * getEnergy();
+        Double energy = getEnergy();
+
+        Double result = coeff * energy;
+        System.out.println(this.getModel()+"的能耗是"+energy+"，转化系数是"+coeff+";油耗结果是"+result);
+        return result;
+    }
+    public boolean isNewEnergy() {
+        return "BEV".equals(fuelType) || "FCV".equals(fuelType) || "PHEV".equals(fuelType);
+    }
+    public Double computeNetOilCredit(BonusProvider bonusProvider,
+                                      TargetProvider targetProvider,
+                                      ConvertionProvider convertionProvider,
+                                      int method) {
+        // 先取参与运算的值（都用包装类型，避免自动拆箱NPE）
+        Double target = this.computeTarget(targetProvider, method);
+        Double consumption = this.computeOilConsumption(convertionProvider, method);
+        Integer s = this.getSales();
+
+        // 只要有一个参数为null，整段返回null
+        if (target == null || consumption == null || s == null) {
+            return null;
         }
-        return null;
-    }
-    public boolean isNewEnergy(){
-        return fuelType.equals("BEV") | fuelType.equals("FCV") | fuelType.equals("PHEV");
+
+        // bonus通常是纯算法数，可保留为primitive
+        double bonus = bonusProvider.calculateBonus(this);
+
+        return (target * bonus - consumption) * s;
     }
 
-
+    public Double computeNetCarbonCredit(CarbonFactorProvider provider, double netOilCredit){ //TODO: 这里没写呢
+        return provider.getCarbonFactor(this)*netOilCredit;
+    }
 }
 
 
