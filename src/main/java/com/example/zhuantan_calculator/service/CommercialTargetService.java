@@ -12,7 +12,7 @@ public class CommercialTargetService {
     }
 
 
-    public double getTarget(int year, String carbonModel, String fuelType, Integer gvm, String gvwArea, int method){ //TODO: 这里有bug
+    public double getTarget(int year, String carbonModel, String fuelType, Integer gvm, String gvwArea, int method){
         CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
 
         if(gvm != null){

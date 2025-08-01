@@ -14,7 +14,6 @@ public class EnergyConversionService {
 
 
     // 这里对于energyType为天然气的车：要提前把energyType改为天然气-LNG或者天然气-CNG
-    //TODO：这里有bug 要测试一下
     public Double computeConversionCoeff(String energyType, String carbonEnergyType, int method){
         EnergyConversionRepo energyConversionRepo = new EnergyConversionRepo(entityManager);
         if(energyType.equals("BEV") && method == 0) {

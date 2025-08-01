@@ -156,7 +156,7 @@ public abstract class Vehicles {
         return (target * bonus - consumption) * s;
     }
 
-    public Double computeNetCarbonCredit(CarbonFactorProvider provider, double netOilCredit){ //TODO: 这里没写呢
+    public Double computeNetCarbonCredit(CarbonFactorProvider provider, double netOilCredit){
         return provider.getCarbonFactor(this)*netOilCredit;
     }
 }
