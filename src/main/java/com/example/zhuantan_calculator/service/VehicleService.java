@@ -9,22 +9,25 @@ public class VehicleService {
     public double computePenetrationRate(List<Vehicles> vehicleList, Vehicles target) {
         String enterprise = target.getEnterprise();
         int year = target.getYear();
-        String model = target.getModel();
-
-        long total = vehicleList.stream()
+        String group = target.getCarbonGroup();
+        // 按销量累加计算总销量
+        double totalSales = vehicleList.stream()
                 .filter(v -> v.getEnterprise().equals(enterprise)
                         && v.getYear() == year
-                        && v.getModel().equals(model))
-                .count();
+                        && v.getCarbonGroup().equals(group))
+                .mapToDouble(Vehicles::getSales)
+                .sum();
 
-        long newEnergyCount = vehicleList.stream()
+        // 按销量累加计算新能源销量
+        double newEnergySales = vehicleList.stream()
                 .filter(v -> v.getEnterprise().equals(enterprise)
                         && v.getYear() == year
-                        && v.getModel().equals(model)
+                        && v.getCarbonGroup().equals(group)
                         && v.isNewEnergy())
-                .count();
+                .mapToDouble(Vehicles::getSales)
+                .sum();
 
-        return total == 0 ? 0.0 : (double) newEnergyCount / total;
+        return totalSales == 0.0 ? 0.0 : newEnergySales / totalSales;
     }
 
 }

@@ -161,13 +161,15 @@ public class MainController {
         };
         newEnergyThresholdProvider = v -> {
             Double threshold = newEnergyThresoldService.computeNewEnergyThreshold(v.getYear(), v.getCarbonGroup());
-            System.out.println("threshold: " + threshold);
+            double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
+            System.out.println("threshold: " + threshold + ", penetrationRate: " + penetrationRate);
             return threshold;
         };
         targetProvider = (HeavyVehicle v, int method) -> commercialTargetService.getTarget(v.getYear(), v.getCarbonModel(), v.getFuelType(), v.getGrossWeight(), v.getGvwArea(), method);
         bonusProvider = v -> {
             double threshold = newEnergyThresholdProvider.getEnergyThreshold(v);
             double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
+            System.out.println(v.getModel() + " 新能源渗透率：" + penetrationRate);
             return penetrationRate >= threshold ? 1.03 : 1;
         };
 
@@ -287,8 +289,14 @@ public class MainController {
         //计算新能源调节系数
         Map<Vehicles, Double> bonusMap = new HashMap<>();
 
-        // 计算净油积分（方法0）
+        // 计算净油积分（方法0/1/3）
         Map<Vehicles, Double> credit0Map = new HashMap<>();
+        Map<Vehicles, Double> credit1Map = new HashMap<>();
+        Map<Vehicles, Double> credit3Map = new HashMap<>();
+        // 计算净碳积分
+        Map<Vehicles, Double> carbonCredit0Map = new HashMap<>();
+        Map<Vehicles, Double> carbonCredit1Map = new HashMap<>();
+        Map<Vehicles, Double> carbonCredit3Map = new HashMap<>();
         for (Vehicles v : vehiclesList) {
             double consumption0 = v.computeOilConsumption(convertionProvider,0);
             double consumption1 = v.computeOilConsumption(convertionProvider,1);
@@ -301,6 +309,18 @@ public class MainController {
             double bonus = bonusProvider.calculateBonus(v);
 
             double credit0 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 0);
+            double credit1 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 1);
+            double credit3 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 3);
+            credit1Map.put(v, credit1);
+            credit3Map.put(v, credit3);
+
+            // 计算净碳积分
+            double carbonCredit0 = v.computeNetCarbonCredit(carbonFactorProvider, credit0);
+            double carbonCredit1 = v.computeNetCarbonCredit(carbonFactorProvider, credit1);
+            double carbonCredit3 = v.computeNetCarbonCredit(carbonFactorProvider, credit3);
+            carbonCredit0Map.put(v, carbonCredit0);
+            carbonCredit1Map.put(v, carbonCredit1);
+            carbonCredit3Map.put(v, carbonCredit3);
 
             consumption0Map.put(v, consumption0);
             consumption1Map.put(v, consumption1);
@@ -335,6 +355,21 @@ public class MainController {
 
         netOilCreditMethod0Col.setCellValueFactory(cellData ->
             new ReadOnlyObjectWrapper<>(credit0Map.get(cellData.getValue()))
+        );
+        netOilCreditMethod1Col.setCellValueFactory(cellData ->
+            new ReadOnlyObjectWrapper<>(credit1Map.get(cellData.getValue()))
+        );
+        netOilCreditMethod3Col.setCellValueFactory(cellData ->
+            new ReadOnlyObjectWrapper<>(credit3Map.get(cellData.getValue()))
+        );
+        netCarbonCreditMethod0Col.setCellValueFactory(cellData ->
+            new ReadOnlyObjectWrapper<>(carbonCredit0Map.get(cellData.getValue()))
+        );
+        netCarbonCreditMethod1Col.setCellValueFactory(cellData ->
+            new ReadOnlyObjectWrapper<>(carbonCredit1Map.get(cellData.getValue()))
+        );
+        netCarbonCreditMethod3Col.setCellValueFactory(cellData ->
+            new ReadOnlyObjectWrapper<>(carbonCredit3Map.get(cellData.getValue()))
         );
         // 3) 刷新表格显示
         vehicleTable.refresh();
