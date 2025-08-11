@@ -41,7 +41,13 @@ public class CommercialTargetService {
 
     public String ifMatchGVMArea(String carbonGroup, Integer grossWeight, String gvwArea){
         List<String> areas = listGvwAreasByCarbonGroup(carbonGroup);
+
+        if(grossWeight == null && gvwArea == null){
+            return "质量段和总质量不能同时为空"; //TODO:这里还有bug，同时都是空的时候不能报错
+        }
+
         String carbonModel = ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) ? "货车" : carbonGroup;
+
         if(!areas.contains(gvwArea)){
             return "该质量段不存在";
         }

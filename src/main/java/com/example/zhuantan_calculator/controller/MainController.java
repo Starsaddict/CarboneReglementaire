@@ -31,6 +31,7 @@ import java.util.HashMap;
 import javafx.animation.PauseTransition;
 import javafx.util.Duration;
 import javafx.application.Platform;
+import javafx.util.converter.DoubleStringConverter;
 
 import com.example.zhuantan_calculator.model.Vehicles;
 import com.example.zhuantan_calculator.factory.VehicleFactory;
@@ -38,6 +39,8 @@ import com.example.zhuantan_calculator.util.ExcelReader;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
+import javafx.util.converter.IntegerStringConverter;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -85,10 +88,15 @@ public class MainController {
     private final java.util.Map<Vehicles, String> rowWarningMap = new java.util.HashMap<>();
     // Anchor map for GVW area cells to show PopOver at the exact cell
     private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new java.util.HashMap<>();
+    // Anchor map for LightVehicle testMass cells to show Tooltip at the testMass cell
+    private final java.util.Map<Vehicles, TableCell<Vehicles, Double>> testMassCellMap = new java.util.HashMap<>();
     // Guard to prevent double commit when both onAction and focus listeners fire
     private boolean gvwCommitInProgress = false;
     // Map to track per-row Tooltip for warnings (multiple simultaneous tooltips)
     private final java.util.Map<Vehicles, Tooltip> rowTooltipMap = new java.util.HashMap<>();
+
+    // 单元格错误高亮样式（淡红，不影响整行）
+    private static final String CELL_ERROR_STYLE = "-fx-background-color: rgba(255,0,0,0.18);";
 
     private EntityManagerFactory emf;
     private EntityManager em;
@@ -104,6 +112,34 @@ public class MainController {
     private TargetProvider targetProvider;
     private BonusProvider bonusProvider;
 
+    // —— Null-safe converters：空字符串 ⇒ null —— //
+    private static final class NullSafeIntegerStringConverter extends IntegerStringConverter {
+        @Override
+        public Integer fromString(String value) {
+            if (value == null) return null;
+            String s = value.trim();
+            if (s.isEmpty()) return null;
+            return super.fromString(s);
+        }
+        @Override
+        public String toString(Integer value) {
+            return value == null ? "" : super.toString(value);
+        }
+    }
+    private static final class NullSafeDoubleStringConverter extends DoubleStringConverter {
+        @Override
+        public Double fromString(String value) {
+            if (value == null) return null;
+            String s = value.trim();
+            if (s.isEmpty()) return null;
+            return super.fromString(s);
+        }
+        @Override
+        public String toString(Double value) {
+            return value == null ? "" : super.toString(value);
+        }
+    }
+
     @FXML void initialize() {
         vehicleTable.setItems(vehicles);
         // Set row factory to style entire row and show tooltip for warnings
@@ -117,9 +153,8 @@ public class MainController {
                 } else {
                     String msg = rowWarningMap.get(item);
                     if (msg != null && !msg.isEmpty()) {
-                        // 整行淡红色背景
-                        setStyle("-fx-background-color: rgba(255,0,0,0.12);");
-                        // 悬浮提示小对话框
+                        // 不再整行标红；仅保留行悬浮提示
+                        setStyle("");
                         setTooltip(new Tooltip(msg));
                     } else {
                         setStyle("");
@@ -142,7 +177,112 @@ public class MainController {
                     return null;
                 }
         );
+        // 让“整备质量/kg”可编辑（轻型车）
+        curbWeightCol.setEditable(true);
+        curbWeightCol.setCellFactory(col -> new TextFieldTableCell<Vehicles, Integer>(new NullSafeIntegerStringConverter()) {
+            @Override
+            public void updateItem(Integer value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) {
+                    setStyle("");
+                    return;
+                }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
+                    setStyle(CELL_ERROR_STYLE);
+                } else {
+                    setStyle("");
+                }
+            }
+        });
+        curbWeightCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Integer newVal = evt.getNewValue();
+            if (v instanceof LightVehicle) {
+                try {
+                    ((LightVehicle) v).setCurbWeight(newVal);
+                } catch (Exception ex) {
+                    ((LightVehicle) v).setCurbWeight(null);
+                }
+                // 轻型车：改动整备质量后重新校验
+                String warn = validateLightVehicle((LightVehicle) v);
+                if (warn != null && !warn.isEmpty()) {
+                    rowWarningMap.put(v, warn);
+                } else {
+                    rowWarningMap.remove(v);
+                }
+                vehicleTable.refresh();
+                if (warn != null && !warn.isEmpty()) {
+                    showGvwWarning(v, warn);
+                } else {
+                    hideGvwWarning(v);
+                }
+            }
+        });
         grossWeightCol.setCellValueFactory(new PropertyValueFactory<>("grossWeight"));
+        // 让“总质量/kg”可编辑（所有车辆）
+        grossWeightCol.setEditable(true);
+        grossWeightCol.setCellFactory(col -> new TextFieldTableCell<Vehicles, Integer>(new NullSafeIntegerStringConverter()) {
+            @Override
+            public void updateItem(Integer value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) {
+                    setStyle("");
+                    return;
+                }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if ((v instanceof LightVehicle || v instanceof HeavyVehicle) && rowWarningMap.containsKey(v)) {
+                    setStyle(CELL_ERROR_STYLE);
+                } else {
+                    setStyle("");
+                }
+            }
+        });
+        grossWeightCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Integer newVal = evt.getNewValue();
+            try {
+                // 允许清空：当输入为空字符串时，IntegerStringConverter 会抛异常，这里兜底为 null
+                // 但由于我们使用了 IntegerStringConverter 的默认转换，正常情况下 newVal 已经是 Integer
+                // 这里仅在出现异常或特殊输入时回退到 null
+                // 将值写回模型
+                v.setGrossWeight(newVal);
+            } catch (Exception ex) {
+                v.setGrossWeight(null);
+            }
+
+            // —— 编辑总质量后，针对不同车型重新校验 —— //
+            String warn = null;
+            if (v instanceof HeavyVehicle) {
+                // 若已有 gvwArea，则用 service 复核匹配性
+                String gvw = ((HeavyVehicle) v).getGvwArea();
+                if (gvw != null && !gvw.isBlank()) {
+                    String msg = commercialTargetService.ifMatchGVMArea(v.getCarbonGroup(), v.getGrossWeight(), gvw);
+                    if (!"ok".equalsIgnoreCase(msg)) {
+                        warn = msg;
+                    }
+                }
+            } else if (v instanceof LightVehicle) {
+                // 轻型车按既有逻辑校验（不改动 validateLightVehicle 的实现）
+                warn = validateLightVehicle((LightVehicle) v);
+            }
+
+            if (warn != null && !warn.isEmpty()) {
+                rowWarningMap.put(v, warn);
+            } else {
+                rowWarningMap.remove(v);
+            }
+
+            vehicleTable.refresh();
+            // 轻型车：编辑总质量后也显示/隐藏提示
+            if (v instanceof LightVehicle) {
+                if (warn != null && !warn.isEmpty()) {
+                    showGvwWarning(v, warn);
+                } else {
+                    hideGvwWarning(v);
+                }
+            }
+        });
         testMassCol.setCellValueFactory(
                 cellData -> {
                     Vehicles v =  cellData.getValue();
@@ -152,6 +292,61 @@ public class MainController {
                     return null;
                 }
         );
+        // 让“测试质量/kg”可编辑（轻型车）
+        testMassCol.setEditable(true);
+        testMassCol.setCellFactory(col -> {
+            TextFieldTableCell<Vehicles, Double> cell = new TextFieldTableCell<>(new NullSafeDoubleStringConverter()) {
+                @Override
+                public void updateItem(Double value, boolean empty) {
+                    super.updateItem(value, empty);
+                    if (empty) {
+                        setStyle("");
+                        setTooltip(null);
+                        try {
+                            Vehicles prev = getTableView().getItems().get(getIndex());
+                            testMassCellMap.remove(prev);
+                        } catch (Exception ignore) {}
+                        return;
+                    }
+                    Vehicles v = getTableView().getItems().get(getIndex());
+                    // 仅记录轻型车的测试质量单元格作为锚点
+                    if (v instanceof LightVehicle) {
+                        testMassCellMap.put(v, this);
+                    }
+                    // 轻型车：该列为错误时标红
+                    if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
+                        setStyle(CELL_ERROR_STYLE);
+                    } else {
+                        setStyle("");
+                    }
+                }
+            };
+            return cell;
+        });
+        testMassCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Double newVal = evt.getNewValue();
+            if (v instanceof LightVehicle) {
+                try {
+                    ((LightVehicle) v).setTestMass(newVal);
+                } catch (Exception ex) {
+                    ((LightVehicle) v).setTestMass(null);
+                }
+                // 轻型车：改动测试质量后重新校验
+                String warn = validateLightVehicle((LightVehicle) v);
+                if (warn != null && !warn.isEmpty()) {
+                    rowWarningMap.put(v, warn);
+                } else {
+                    rowWarningMap.remove(v);
+                }
+                vehicleTable.refresh();
+                if (warn != null && !warn.isEmpty()) {
+                    showGvwWarning(v, warn);
+                } else {
+                    hideGvwWarning(v);
+                }
+            }
+        });
         gvwAreaCol.setCellValueFactory(
                 cellData -> {
                     Vehicles v =  cellData.getValue();
@@ -170,6 +365,9 @@ public class MainController {
 
         vehicleTable.setEditable(true);
         gvwAreaCol.setEditable(true);
+        // 调整“质量段”列的默认宽度，避免编辑区域过窄
+        gvwAreaCol.setPrefWidth(120);
+        gvwAreaCol.setMinWidth(120);
         setupGvwAreaComboCell();
 
         // Initialize services and providers
@@ -258,6 +456,7 @@ public class MainController {
             showBaseView();
             vehicleTable.refresh();
             validateGvwAfterImport();
+            validateLightAfterImport();
         }
     }
     private Integer parseIntSafe(String value) {
@@ -430,11 +629,6 @@ public class MainController {
         }
     }
 
-    private void refreshTable() {
-        vehicleTable.getItems().clear();
-        vehicleTable.getItems().addAll(vehicles);
-    }
-
     private static <S> void useDecimalDisplay(TableColumn<S, Double> col, String pattern) {
         // 只创建一次，避免在每个单元格更新时反复 new
         DecimalFormat df = new DecimalFormat(pattern);
@@ -458,18 +652,47 @@ public class MainController {
             private void createCombo(String carbonGroup, String currentValue) {
                 combo = new ComboBox<>();
                 combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setEditable(false); // 取消自由输入
+                // 自定义下拉与按钮单元，展示“(空)”代表 null
+                combo.setCellFactory(listView -> new javafx.scene.control.ListCell<>() {
+                    @Override
+                    protected void updateItem(String item, boolean empty) {
+                        super.updateItem(item, empty);
+                        if (empty) {
+                            setText(null);
+                        } else {
+                            setText(item == null ? "(空)" : item);
+                        }
+                    }
+                });
+                combo.setButtonCell(new javafx.scene.control.ListCell<>() {
+                    @Override
+                    protected void updateItem(String item, boolean empty) {
+                        super.updateItem(item, empty);
+                        if (empty) {
+                            setText(null);
+                        } else {
+                            setText(item == null ? "(空)" : item);
+                        }
+                    }
+                });
+                // 选项首位加入 null，供用户选择清空
+                combo.getItems().clear();
+                combo.getItems().add(null);
                 try {
                     var options = commercialTargetService.listGvwAreasByCarbonGroup(carbonGroup);
-                    combo.getItems().setAll(options);
+                    combo.getItems().addAll(options);
                 } catch (Exception ex) {
-                    combo.getItems().clear();
+                    // 保留仅有的 null 选项
                 }
+                // 选择当前值（为 null 时可选到“(空)”占位）
                 combo.getSelectionModel().select(currentValue);
                 combo.setOnAction(e -> {
                     if (gvwCommitInProgress) return;
+                    String sel = combo.getSelectionModel().getSelectedItem(); // 可能为 null
                     gvwCommitInProgress = true;
                     try {
-                        commitEdit(combo.getSelectionModel().getSelectedItem());
+                        commitEdit(sel);
                     } finally {
                         gvwCommitInProgress = false;
                     }
@@ -477,7 +700,7 @@ public class MainController {
                 combo.focusedProperty().addListener((obs, oldVal, newVal) -> {
                     if (!newVal) { // focus lost
                         if (gvwCommitInProgress) return;
-                        String sel = combo.getSelectionModel().getSelectedItem();
+                        String sel = combo.getSelectionModel().getSelectedItem(); // 可能为 null
                         if (!java.util.Objects.equals(sel, getItem())) {
                             gvwCommitInProgress = true;
                             try {
@@ -495,10 +718,6 @@ public class MainController {
                 super.startEdit();
                 Vehicles v = getTableView().getItems().get(getIndex());
                 if (v instanceof HeavyVehicle) {
-                    boolean allowEdit = v.getGrossWeight() == null;
-                    if (!allowEdit) {
-                        return;
-                    }
                     String carbonGroup = v.getCarbonGroup();
                     String currentValue = getItem();
                     createCombo(carbonGroup, currentValue);
@@ -538,16 +757,28 @@ public class MainController {
                         setText(null);
                         setGraphic(combo);
                         combo.requestFocus();
-                        setStyle("");
+                        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
+                            setStyle(CELL_ERROR_STYLE);
+                        } else {
+                            setStyle("");
+                        }
                     } else {
                         setText(value);
                         setGraphic(null);
-                        setStyle("");
+                        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
+                            setStyle(CELL_ERROR_STYLE);
+                        } else {
+                            setStyle("");
+                        }
                     }
                 } else {
                     setText(value);
                     setGraphic(null);
-                    setStyle("");
+                    if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
+                        setStyle(CELL_ERROR_STYLE);
+                    } else {
+                        setStyle("");
+                    }
                 }
             }
         });
@@ -559,6 +790,15 @@ public class MainController {
             if (v instanceof HeavyVehicle) {
                 String newVal = event.getNewValue();
                 String carbonGroup = v.getCarbonGroup();
+
+                // 支持清空质量段：当选择或输入为空时，直接置空并清除告警
+                if (newVal == null || newVal.isBlank()) {
+                    ((HeavyVehicle) v).setGvwArea(null);
+                    rowWarningMap.remove(v);
+                    vehicleTable.refresh();
+                    hideGvwWarning(v);
+                    return;
+                }
 
                 // 让 service 层决定校验结论：返回 "ok" 代表通过，否则返回具体错误信息
                 String returnMessage = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), newVal);
@@ -586,19 +826,27 @@ public class MainController {
 
     private void showGvwWarning(Vehicles v, String msg) {
         Platform.runLater(() -> {
-            TableCell<Vehicles, String> cell = gvwAreaCellMap.get(v);
+            // 优先：轻型车 — 在“测试质量”单元格右侧显示
+            TableCell<Vehicles, ?> anchorCell = null;
+            if (v instanceof LightVehicle) {
+                anchorCell = testMassCellMap.get(v);
+            }
+            // 次优：重型车 — 在“质量段”单元格右侧显示
+            if (anchorCell == null && v instanceof HeavyVehicle) {
+                anchorCell = gvwAreaCellMap.get(v);
+            }
             Tooltip old = rowTooltipMap.remove(v);
             if (old != null) {
                 try { old.hide(); } catch (Exception ignore) {}
             }
             Tooltip tip = new Tooltip(msg);
             tip.setStyle("-fx-font-size: 12px; -fx-background-color: rgba(255,255,200,0.95); -fx-text-fill: black;");
-            if (cell != null && cell.getScene() != null && cell.isVisible()) {
-                var b = cell.localToScreen(cell.getBoundsInLocal());
+            if (anchorCell != null && anchorCell.getScene() != null && anchorCell.isVisible()) {
+                var b = anchorCell.localToScreen(anchorCell.getBoundsInLocal());
                 if (b != null) {
                     double screenX = b.getMaxX() + 8;
                     double screenY = (b.getMinY() + b.getMaxY()) / 2.0;
-                    tip.show(cell, screenX, screenY);
+                    tip.show(anchorCell, screenX, screenY);
                     rowTooltipMap.put(v, tip);
                     PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
                     hideLater.setOnFinished(e -> {
@@ -609,6 +857,7 @@ public class MainController {
                     return;
                 }
             }
+            // 最后：回退到表格位置
             if (vehicleTable != null && vehicleTable.getScene() != null) {
                 var p = vehicleTable.localToScreen(0, 0);
                 double screenX = p.getX() + 20;
@@ -661,6 +910,82 @@ public class MainController {
                 }
             }
         }
+    }
+
+    // 新增: 轻型车导入后批量校验（测试质量 vs. 计算值）
+    private void validateLightAfterImport() {
+        boolean anyChange = false;
+        for (Vehicles v : vehiclesList) {
+            if (v instanceof LightVehicle) {
+                String msg = validateLightVehicle((LightVehicle) v);
+                if (msg != null && !msg.isEmpty()) {
+                    rowWarningMap.put(v, msg);
+                    anyChange = true;
+                } else {
+                    if (rowWarningMap.remove(v) != null) anyChange = true;
+                }
+            }
+        }
+
+        if (anyChange) {
+            vehicleTable.refresh();
+            // 轻型车：导入后显示浮窗提示（不担心抢占焦点）
+            for (Vehicles v : vehiclesList) {
+                if (v instanceof LightVehicle) {
+                    String msg = rowWarningMap.get(v);
+                    if (msg != null && !msg.isEmpty()) {
+                        showGvwWarning(v, msg); // 无 GVW 锚点会回退到表格位置
+                    } else {
+                        hideGvwWarning(v);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 轻型车校验：
+     * 仅在 testMass(测试质量) 不为空时进行校验：
+     * 1) 若 curbWeight 或 grossWeight 为空，或 curbWeight &gt; grossWeight，则返回“测试质量无法计算，请核实信息”
+     * 2) 否则按 N1/M2 的规则计算期望测试质量 goal_tm：
+     *    - N1: goal_tm = curb + 100 + (gross - curb - 100) * 0.15
+     *    - 其他(如 M2): goal_tm = curb + 100 + (gross - curb - 100) * 0.28
+     *    若 |goal_tm - testMass| &gt; 0.5，则返回“测试质量与计算结果不符，计算时以测试质量为准”
+     * 返回 null 表示通过。
+     */
+    private String validateLightVehicle(LightVehicle lv) {
+        if (lv == null) return null;
+
+        Double testMass = lv.getTestMass();
+        Integer curbWeight = lv.getCurbWeight();
+        Integer grossWeight = lv.getGrossWeight();
+        if (testMass == null) {
+            if(!(curbWeight ==null) &&!(grossWeight == null)) {
+                return null;
+            }
+            return "测试质量无法计算，请核实信息";
+        }
+
+
+        if(curbWeight == null || grossWeight == null){
+            return null;
+        }
+        if (curbWeight > grossWeight) {
+            return "测试质量无法计算，请核实信息";
+        }
+
+        // 根据车型(N1/M2)计算 goal_tm
+        String carbonModel = lv.getCarbonModel(); // 与用户代码保持一致：使用 getCarbonModel() 判定 N1
+        double curb = curbWeight.doubleValue();
+        double gross = grossWeight.doubleValue();
+
+        double ratio = "N1".equals(carbonModel) ? 0.15 : 0.28;
+        double goal_tm = curb + 100.0 + (gross - curb - 100.0) * ratio;
+
+        if (Math.abs(goal_tm - testMass) > 0.5) {
+            return "测试质量与计算结果不符，计算时以测试质量为准";
+        }
+        return null; // 通过
     }
 
     private void showBaseView() {
