@@ -257,6 +257,7 @@ public class MainController {
             vehicles.setAll(vehiclesList);
             showBaseView();
             vehicleTable.refresh();
+            validateGvwAfterImport();
         }
     }
     private Integer parseIntSafe(String value) {
@@ -571,57 +572,93 @@ public class MainController {
                 vehicleTable.refresh();
 
                 if (hasWarning) {
-                    // 在下一帧获取最新的 cell 并在其附近显示 Tooltip（允许多个同时存在）
-                    Platform.runLater(() -> {
-                        TableCell<Vehicles, String> cell = gvwAreaCellMap.get(v);
-                        String msg = messageBuilder.toString();
-                        Tooltip old = rowTooltipMap.remove(v);
-                        if (old != null) {
-                            old.hide();
-                        }
-                        Tooltip tip = new Tooltip(msg);
-                        tip.setStyle("-fx-font-size: 12px; -fx-background-color: rgba(255,255,200,0.95); -fx-text-fill: black;");
-                        if (cell != null && cell.getScene() != null && cell.isVisible()) {
-                            var b = cell.localToScreen(cell.getBoundsInLocal());
-                            if (b != null) {
-                                double screenX = b.getMaxX() + 8;
-                                double screenY = (b.getMinY() + b.getMaxY()) / 2.0; // 垂直居中
-                                tip.show(cell, screenX, screenY);
-                                rowTooltipMap.put(v, tip);
-                                // 自动隐藏但不影响其它行
-                                PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
-                                hideLater.setOnFinished(e -> {
-                                    tip.hide();
-                                    rowTooltipMap.remove(v, tip);
-                                });
-                                hideLater.play();
-                                return;
-                            }
-                        }
-                        // 兜底：锚到表格左上角偏移，至少能看到（极少触发）
-                        if (vehicleTable != null && vehicleTable.getScene() != null) {
-                            var p = vehicleTable.localToScreen(0, 0);
-                            double screenX = p.getX() + 20;
-                            double screenY = p.getY() + 20;
-                            tip.show(vehicleTable, screenX, screenY);
-                            rowTooltipMap.put(v, tip);
-                            PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
-                            hideLater.setOnFinished(e -> {
-                                tip.hide();
-                                rowTooltipMap.remove(v, tip);
-                            });
-                            hideLater.play();
-                        }
-                    });
+                    showGvwWarning(v, messageBuilder.toString());
                 } else {
-                    // 若本次无警告但之前显示过 Tooltip，则关闭并移除
-                    Tooltip old = rowTooltipMap.remove(v);
-                    if (old != null) {
-                        old.hide();
-                    }
+                    hideGvwWarning(v);
                 }
             }
         });
+    }
+
+    // 新增: 显示GVW警告Tooltip
+    private void showGvwWarning(Vehicles v, String msg) {
+        Platform.runLater(() -> {
+            TableCell<Vehicles, String> cell = gvwAreaCellMap.get(v);
+            Tooltip old = rowTooltipMap.remove(v);
+            if (old != null) {
+                try { old.hide(); } catch (Exception ignore) {}
+            }
+            Tooltip tip = new Tooltip(msg);
+            tip.setStyle("-fx-font-size: 12px; -fx-background-color: rgba(255,255,200,0.95); -fx-text-fill: black;");
+            if (cell != null && cell.getScene() != null && cell.isVisible()) {
+                var b = cell.localToScreen(cell.getBoundsInLocal());
+                if (b != null) {
+                    double screenX = b.getMaxX() + 8;
+                    double screenY = (b.getMinY() + b.getMaxY()) / 2.0;
+                    tip.show(cell, screenX, screenY);
+                    rowTooltipMap.put(v, tip);
+                    PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
+                    hideLater.setOnFinished(e -> {
+                        tip.hide();
+                        rowTooltipMap.remove(v, tip);
+                    });
+                    hideLater.play();
+                    return;
+                }
+            }
+            if (vehicleTable != null && vehicleTable.getScene() != null) {
+                var p = vehicleTable.localToScreen(0, 0);
+                double screenX = p.getX() + 20;
+                double screenY = p.getY() + 20;
+                tip.show(vehicleTable, screenX, screenY);
+                rowTooltipMap.put(v, tip);
+                PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
+                hideLater.setOnFinished(e -> {
+                    tip.hide();
+                    rowTooltipMap.remove(v, tip);
+                });
+                hideLater.play();
+            }
+        });
+    }
+
+    // 新增: 隐藏GVW警告Tooltip
+    private void hideGvwWarning(Vehicles v) {
+        Tooltip old = rowTooltipMap.remove(v);
+        if (old != null) {
+            try { old.hide(); } catch (Exception ignore) {}
+        }
+    }
+
+    // 新增: 导入后批量校验GVW并显示警告
+    private void validateGvwAfterImport() {
+        boolean anyChange = false;
+        for (Vehicles v : vehiclesList) {
+            if (v instanceof HeavyVehicle) {
+                String gvw = ((HeavyVehicle) v).getGvwArea();
+                if (gvw != null && !gvw.isBlank()) {
+                    String carbonGroup = v.getCarbonGroup();
+                    String msg = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), gvw);
+                    if (!"ok".equalsIgnoreCase(msg)) {
+                        rowWarningMap.put(v, msg);
+                        anyChange = true;
+                    } else {
+                        if (rowWarningMap.remove(v) != null) anyChange = true;
+                    }
+                }
+            }
+        }
+        if (anyChange) {
+            vehicleTable.refresh();
+            for (Vehicles v : vehiclesList) {
+                String msg = rowWarningMap.get(v);
+                if (msg != null && !msg.isEmpty()) {
+                    showGvwWarning(v, msg);
+                } else {
+                    hideGvwWarning(v);
+                }
+            }
+        }
     }
 
     /** 将界面切回初始（导入前/导入后未计算）的列可见性 */
