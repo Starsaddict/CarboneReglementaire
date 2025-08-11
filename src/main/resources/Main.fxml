@@ -1,53 +1,52 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.geometry.*?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
-<?import javafx.geometry.Insets?>
 
-<BorderPane xmlns:fx="http://javafx.com/fxml"
-            fx:controller="com.example.zhuantan_calculator.controller.MainController">
+<BorderPane xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/17.0.12" fx:controller="com.example.zhuantan_calculator.controller.MainController">
 
     <top>
         <HBox spacing="10">
             <padding>
-                <Insets top="10" right="10" bottom="10" left="10"/>
+                <Insets bottom="10" left="10" right="10" top="10" />
             </padding>
-            <Button fx:id="importButton" text="导入Excel" onAction="#handleImportExcel"/>
-            <Button fx:id="calculateButton" text="计算积分" onAction="#calculateCredit"/>
-            <Button fx:id="exportButton" text="导出Excel" onAction="#handleExportExcel"/>
+            <Button fx:id="importButton" onAction="#handleImportExcel" text="导入Excel" />
+            <Button fx:id="calculateButton" onAction="#calculateCredit" text="计算积分" />
+            <Button fx:id="exportButton" onAction="#handleExportExcel" text="导出Excel" />
         </HBox>
     </top>
 
     <center>
         <TableView fx:id="vehicleTable">
             <columns>
-                <TableColumn fx:id = "yearCol" text="年份" />
-                <TableColumn fx:id = "enterpriseCol" text="企业名称" />
-                <TableColumn fx:id = "modelCol" text="车型" />
-                <TableColumn fx:id = "fuelTypeCol" text="燃料类型" />
-                <TableColumn fx:id = "curbWeightCol" text="整备质量/kg"/>
-                <TableColumn fx:id = "grossWeightCol" text="总质量/kg"/>
-                <TableColumn fx:id = "testMassCol" text="测试质量/kg"/>
-                <TableColumn fx:id = "gvwAreaCol" text="质量段"/>
-                <TableColumn fx:id = "energyCol" text="能耗"/>
-                <TableColumn fx:id = "salesCol" text="销量"/>
-                <TableColumn fx:id = "carbonGroupCol" text="转碳车组"/>
-                <TableColumn fx:id="energyConsumptionMethod0Col" text="能耗转油耗（方法0）"/>
-                <TableColumn fx:id="energyConsumptionMethod1Col" text="能耗转油耗（方法1）"/>
-                <TableColumn fx:id="energyConsumptionMethod3Col" text="能耗转油耗（方法3）"/>
+                <TableColumn fx:id="yearCol" text="年份" />
+                <TableColumn fx:id="enterpriseCol" text="企业名称" />
+                <TableColumn fx:id="modelCol" text="车型" />
+                <TableColumn fx:id="fuelTypeCol" text="燃料类型" />
+                <TableColumn fx:id="curbWeightCol" text="整备质量/kg" />
+                <TableColumn fx:id="grossWeightCol" text="总质量/kg" />
+                <TableColumn fx:id="testMassCol" text="测试质量/kg" />
+                <TableColumn fx:id="gvwAreaCol" text="质量段" />
+                <TableColumn fx:id="energyCol" text="能耗" />
+                <TableColumn fx:id="salesCol" text="销量" />
+                <TableColumn fx:id="carbonGroupCol" text="转碳车组" />
+                <TableColumn fx:id="energyConsumptionMethod0Col" text="能耗转油耗（方法0）" />
+                <TableColumn fx:id="energyConsumptionMethod1Col" text="能耗转油耗（方法1）" />
+                <TableColumn fx:id="energyConsumptionMethod3Col" text="能耗转油耗（方法3）" />
 
-                <TableColumn fx:id="target0Col" text="目标值（方法0）"/>
-                <TableColumn fx:id="target1Col" text="目标值（方法1）"/>
-                <TableColumn fx:id="target3Col" text="目标值（方法3）"/>
+                <TableColumn fx:id="target0Col" text="目标值（方法0）" />
+                <TableColumn fx:id="target1Col" text="目标值（方法1）" />
+                <TableColumn fx:id="target3Col" text="目标值（方法3）" />
 
-                <TableColumn fx:id="bonusCol" text="新能源调节系数"/>
+                <TableColumn fx:id="bonusCol" text="新能源调节系数" />
 
-                <TableColumn fx:id="netOilCreditMethod0Col" text="净油耗积分（方法0）"/>
-                <TableColumn fx:id="netOilCreditMethod1Col" text="净油耗积分（方法1）"/>
-                <TableColumn fx:id="netOilCreditMethod3Col" text="净油耗积分（方法3）"/>
-                <TableColumn fx:id="netCarbonCreditMethod0Col" text="净碳积分（方法0）"/>
-                <TableColumn fx:id="netCarbonCreditMethod1Col" text="净碳积分（方法1）"/>
-                <TableColumn fx:id="netCarbonCreditMethod3Col" text="净碳积分（方法3）"/>
+                <TableColumn fx:id="netOilCreditMethod0Col" text="净油耗积分（方法0）" />
+                <TableColumn fx:id="netOilCreditMethod1Col" text="净油耗积分（方法1）" />
+                <TableColumn fx:id="netOilCreditMethod3Col" text="净油耗积分（方法3）" />
+                <TableColumn fx:id="netCarbonCreditMethod0Col" text="净碳积分（方法0）" />
+                <TableColumn fx:id="netCarbonCreditMethod1Col" text="净碳积分（方法1）" />
+                <TableColumn fx:id="netCarbonCreditMethod3Col" text="净碳积分（方法3）" />
             </columns>
         </TableView>
     </center>

@@ -60,4 +60,17 @@ public class CommercialTargetRepo {
         }
     }
 
+    public List<String> findAllGVWAreasByCarbonGroup(String carbonModel) {
+        try {
+            return entityManager.createQuery(
+                    "select distinct gvwArea from CommercialTarget " +
+                            "where carbonModel = :carbonModel " +
+                            "order by gvwMin"
+                    , String.class)
+                    .setParameter("carbonModel",carbonModel)
+                    .getResultList();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
 }

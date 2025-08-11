@@ -3,6 +3,8 @@ package com.example.zhuantan_calculator.service;
 import com.example.zhuantan_calculator.repository.CommercialTargetRepo;
 import jakarta.persistence.EntityManager;
 
+import java.util.List;
+
 public class CommercialTargetService {
 
     private final EntityManager entityManager;
@@ -24,5 +26,16 @@ public class CommercialTargetService {
                 return 100;
             }
         }
+    }
+
+    public List<String> listGvwAreasByCarbonGroup(String carbonGroup) {
+        if("N1".equals(carbonGroup) || "M2".equals(carbonGroup)){
+            return null;
+        }
+        CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
+        if("轻型载货".equals(carbonGroup)||"中重型载货".equals(carbonGroup)){
+            return commercialTargetRepo.findAllGVWAreasByCarbonGroup("货车");
+        }
+        return commercialTargetRepo.findAllGVWAreasByCarbonGroup(carbonGroup);
     }
 }

@@ -16,7 +16,9 @@ import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.FileChooser;
+import javafx.scene.control.ComboBox;
 import javafx.stage.Window;
+
 import java.io.File;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -132,6 +134,10 @@ public class MainController {
 
         useDecimalDisplay(energyCol, "#,##0.00");
 
+        vehicleTable.setEditable(true);
+        gvwAreaCol.setEditable(true);
+        setupGvwAreaComboCell();
+
         // Initialize services and providers
         emf = Persistence.createEntityManagerFactory("zhuantanPU");
         em = emf.createEntityManager();
@@ -174,6 +180,20 @@ public class MainController {
         };
 
         exportButton.setOnAction(this::handleExportExcel);
+
+        energyConsumptionMethod0Col.setVisible(false);
+        energyConsumptionMethod1Col.setVisible(false);
+        energyConsumptionMethod3Col.setVisible(false);
+        target0Col.setVisible(false);
+        target1Col.setVisible(false);
+        target3Col.setVisible(false);
+        bonusCol.setVisible(false);
+        netOilCreditMethod0Col.setVisible(false);
+        netOilCreditMethod1Col.setVisible(false);
+        netOilCreditMethod3Col.setVisible(false);
+        netCarbonCreditMethod0Col.setVisible(false);
+        netCarbonCreditMethod1Col.setVisible(false);
+        netCarbonCreditMethod3Col.setVisible(false);
 
     }
 
@@ -372,7 +392,33 @@ public class MainController {
             new ReadOnlyObjectWrapper<>(carbonCredit3Map.get(cellData.getValue()))
         );
         // 3) 刷新表格显示
+
         vehicleTable.refresh();
+
+        // 隐藏基础列
+        fuelTypeCol.setVisible(false);
+        curbWeightCol.setVisible(false);
+        grossWeightCol.setVisible(false);
+        testMassCol.setVisible(false);
+        gvwAreaCol.setVisible(false);
+        energyCol.setVisible(false);
+        salesCol.setVisible(false);
+        carbonGroupCol.setVisible(false);
+
+        energyConsumptionMethod0Col.setVisible(true);
+        energyConsumptionMethod1Col.setVisible(true);
+        energyConsumptionMethod3Col.setVisible(true);
+        target0Col.setVisible(true);
+        target1Col.setVisible(true);
+        target3Col.setVisible(true);
+        bonusCol.setVisible(true);
+        netOilCreditMethod0Col.setVisible(true);
+        netOilCreditMethod1Col.setVisible(true);
+        netOilCreditMethod3Col.setVisible(true);
+        netCarbonCreditMethod0Col.setVisible(true);
+        netCarbonCreditMethod1Col.setVisible(true);
+        netCarbonCreditMethod3Col.setVisible(true);
+
     }
 
     private Double parseDoubleSafe(String value) {
@@ -403,6 +449,87 @@ public class MainController {
             }
         });
         col.setStyle("-fx-alignment: CENTER-RIGHT;");
+    }
+
+    private void setupGvwAreaComboCell() {
+        gvwAreaCol.setCellFactory(col -> new TableCell<Vehicles, String>() {
+            private ComboBox<String> combo;
+            private boolean comboInitialized = false;
+
+            private void createCombo(String carbonGroup, String currentValue) {
+                combo = new ComboBox<>();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                try {
+                    var options = commercialTargetService.listGvwAreasByCarbonGroup(carbonGroup);
+                    combo.getItems().setAll(options);
+                } catch (Exception ex) {
+                    combo.getItems().clear();
+                }
+                combo.getSelectionModel().select(currentValue);
+                combo.setOnAction(e -> {
+                    commitEdit(combo.getSelectionModel().getSelectedItem());
+                });
+                combo.focusedProperty().addListener((obs, oldVal, newVal) -> {
+                    if (!newVal) {
+                        // focus lost, commit if changed
+                        commitEdit(combo.getSelectionModel().getSelectedItem());
+                    }
+                });
+            }
+
+            @Override
+            public void startEdit() {
+                super.startEdit();
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (v instanceof HeavyVehicle) {
+                    String carbonGroup = v.getCarbonGroup();
+                    String currentValue = getItem();
+                    createCombo(carbonGroup, currentValue);
+                    setText(null);
+                    setGraphic(combo);
+                    combo.requestFocus();
+                }
+            }
+
+            @Override
+            public void cancelEdit() {
+                super.cancelEdit();
+                setText(getItem());
+                setGraphic(null);
+            }
+
+            @Override
+            protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) {
+                    setText(null);
+                    setGraphic(null);
+                } else if (isEditing()) {
+                    Vehicles v = getTableView().getItems().get(getIndex());
+                    if (v instanceof HeavyVehicle) {
+                        String carbonGroup = v.getCarbonGroup();
+                        createCombo(carbonGroup, value);
+                        setText(null);
+                        setGraphic(combo);
+                        combo.requestFocus();
+                    } else {
+                        setText(value);
+                        setGraphic(null);
+                    }
+                } else {
+                    setText(value);
+                    setGraphic(null);
+                }
+            }
+        });
+        // Add OnEditCommit handler to update HeavyVehicle and refresh table
+        gvwAreaCol.setOnEditCommit(event -> {
+            Vehicles v = event.getRowValue();
+            if (v instanceof HeavyVehicle) {
+                ((HeavyVehicle) v).setGvwArea(event.getNewValue());
+                vehicleTable.refresh();
+            }
+        });
     }
 
 }
