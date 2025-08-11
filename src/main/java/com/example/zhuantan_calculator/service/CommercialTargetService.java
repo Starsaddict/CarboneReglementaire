@@ -17,7 +17,7 @@ public class CommercialTargetService {
     public double getTarget(int year, String carbonModel, String fuelType, Integer gvm, String gvwArea, int method){
         CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
 
-        if(gvm != null){
+        if(!(gvm == null)){
             return commercialTargetRepo.findTargetValue(year, carbonModel, fuelType, gvm, method);
         }else{
             try{
@@ -39,17 +39,21 @@ public class CommercialTargetService {
         return commercialTargetRepo.findAllGVWAreasByCarbonGroup(carbonGroup);
     }
 
-    public String ifMatchGVMArea(String carbonGroup, int grossWeight, String gvwArea){
+    public String ifMatchGVMArea(String carbonGroup, Integer grossWeight, String gvwArea){
         List<String> areas = listGvwAreasByCarbonGroup(carbonGroup);
         String carbonModel = ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) ? "货车" : carbonGroup;
         if(!areas.contains(gvwArea)){
             return "该质量段不存在";
         }
 
+        if(grossWeight == null){
+            return "ok";
+        }
+
         CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
 
         if(!gvwArea.equals(commercialTargetRepo.findGVWAreaByGVW(grossWeight,carbonModel))){
-            return "质量段与质量不对应";
+            return "质量段与质量不对应，计算时以总质量数据为准";
         }
         return "ok";
 

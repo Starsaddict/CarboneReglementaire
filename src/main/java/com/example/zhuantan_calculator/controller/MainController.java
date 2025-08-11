@@ -495,6 +495,10 @@ public class MainController {
                 super.startEdit();
                 Vehicles v = getTableView().getItems().get(getIndex());
                 if (v instanceof HeavyVehicle) {
+                    boolean allowEdit = v.getGrossWeight() == null;
+                    if (!allowEdit) {
+                        return;
+                    }
                     String carbonGroup = v.getCarbonGroup();
                     String currentValue = getItem();
                     createCombo(carbonGroup, currentValue);
@@ -580,7 +584,6 @@ public class MainController {
         });
     }
 
-    // 新增: 显示GVW警告Tooltip
     private void showGvwWarning(Vehicles v, String msg) {
         Platform.runLater(() -> {
             TableCell<Vehicles, String> cell = gvwAreaCellMap.get(v);
@@ -622,7 +625,6 @@ public class MainController {
         });
     }
 
-    // 新增: 隐藏GVW警告Tooltip
     private void hideGvwWarning(Vehicles v) {
         Tooltip old = rowTooltipMap.remove(v);
         if (old != null) {
@@ -661,7 +663,6 @@ public class MainController {
         }
     }
 
-    /** 将界面切回初始（导入前/导入后未计算）的列可见性 */
     private void showBaseView() {
         // 基础信息列显示
         fuelTypeCol.setVisible(true);
@@ -689,7 +690,6 @@ public class MainController {
         netCarbonCreditMethod3Col.setVisible(false);
     }
 
-    /** 将界面切到“已计算完成”的列可见性 */
     private void showComputedView() {
         // 基础信息列隐藏
         fuelTypeCol.setVisible(false);
@@ -717,7 +717,6 @@ public class MainController {
         netCarbonCreditMethod3Col.setVisible(true);
     }
 
-    /** 隐藏并清空所有行 Tooltip */
     private void clearRowTooltips() {
         for (var tip : rowTooltipMap.values()) {
             try { tip.hide(); } catch (Exception ignore) {}
@@ -725,7 +724,6 @@ public class MainController {
         rowTooltipMap.clear();
     }
 
-    /** 重新导入前/后用于恢复到初始状态的重置方法 */
     private void resetStateForNewImport() {
         // 停止可能存在的编辑
         try {
@@ -743,6 +741,7 @@ public class MainController {
         // 刷新表格
         if (vehicleTable != null) vehicleTable.refresh();
     }
+
 
 }
 
