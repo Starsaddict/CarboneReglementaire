@@ -103,6 +103,7 @@
             <version>2.22.1</version>
         </dependency>
 
+
     </dependencies>
 
     <!-- 为 Hibernate 补充 JBoss 仓库（有些版本不在中央仓库） -->

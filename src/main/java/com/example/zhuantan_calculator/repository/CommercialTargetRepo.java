@@ -73,4 +73,19 @@ public class CommercialTargetRepo {
             return null;
         }
     }
+
+    public String findGVWAreaByGVW(int gvw, String carbonModel){
+        try {
+            return entityManager.createQuery("select distinct gvwArea from CommercialTarget " +
+                    "where gvwMin < :gvw " +
+                    "and gvwMax >= :gvw " +
+                    "and carbonModel = :carbonModel", String.class)
+                    .setParameter("gvw",gvw)
+                    .setParameter("carbonModel", carbonModel)
+                    .setMaxResults(1)
+                    .getSingleResult();
+        } catch (NoResultException e) {
+            return null;
+        }
+    }
 }

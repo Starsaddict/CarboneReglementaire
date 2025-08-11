@@ -18,6 +18,8 @@ import javafx.scene.control.TableView;
 import javafx.stage.FileChooser;
 import javafx.scene.control.ComboBox;
 import javafx.stage.Window;
+import javafx.scene.control.TableRow;
+import javafx.scene.control.Tooltip;
 
 import java.io.File;
 import java.text.DecimalFormat;
@@ -25,6 +27,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+
+import javafx.animation.PauseTransition;
+import javafx.util.Duration;
+import javafx.application.Platform;
 
 import com.example.zhuantan_calculator.model.Vehicles;
 import com.example.zhuantan_calculator.factory.VehicleFactory;
@@ -41,6 +47,8 @@ import org.apache.poi.ss.usermodel.Cell;
 import java.io.FileOutputStream;
 import javafx.stage.FileChooser;
 import javafx.event.ActionEvent;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
 
 public class MainController {
 
@@ -77,6 +85,14 @@ public class MainController {
     @FXML private TableColumn<Vehicles, Double> netCarbonCreditMethod3Col;
     private final ObservableList<Vehicles> vehicles = FXCollections.observableArrayList();
     private final List<Vehicles> vehiclesList = new ArrayList<>();
+    // Map to track warning message for each row (vehicle)
+    private final java.util.Map<Vehicles, String> rowWarningMap = new java.util.HashMap<>();
+    // Anchor map for GVW area cells to show PopOver at the exact cell
+    private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new java.util.HashMap<>();
+    // Guard to prevent double commit when both onAction and focus listeners fire
+    private boolean gvwCommitInProgress = false;
+    // Map to track per-row Tooltip for warnings (multiple simultaneous tooltips)
+    private final java.util.Map<Vehicles, Tooltip> rowTooltipMap = new java.util.HashMap<>();
 
     private EntityManagerFactory emf;
     private EntityManager em;
@@ -94,6 +110,28 @@ public class MainController {
 
     @FXML void initialize() {
         vehicleTable.setItems(vehicles);
+        // Set row factory to style entire row and show tooltip for warnings
+        vehicleTable.setRowFactory(tv -> new TableRow<>() {
+            @Override
+            protected void updateItem(Vehicles item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setStyle("");
+                    setTooltip(null);
+                } else {
+                    String msg = rowWarningMap.get(item);
+                    if (msg != null && !msg.isEmpty()) {
+                        // 整行淡红色背景
+                        setStyle("-fx-background-color: rgba(255,0,0,0.12);");
+                        // 悬浮提示小对话框
+                        setTooltip(new Tooltip(msg));
+                    } else {
+                        setStyle("");
+                        setTooltip(null);
+                    }
+                }
+            }
+        });
 
         yearCol.setCellValueFactory(new PropertyValueFactory<>("year"));
         modelCol.setCellValueFactory(new PropertyValueFactory<>("model"));
@@ -454,8 +492,6 @@ public class MainController {
     private void setupGvwAreaComboCell() {
         gvwAreaCol.setCellFactory(col -> new TableCell<Vehicles, String>() {
             private ComboBox<String> combo;
-            private boolean comboInitialized = false;
-
             private void createCombo(String carbonGroup, String currentValue) {
                 combo = new ComboBox<>();
                 combo.setMaxWidth(Double.MAX_VALUE);
@@ -467,12 +503,26 @@ public class MainController {
                 }
                 combo.getSelectionModel().select(currentValue);
                 combo.setOnAction(e -> {
-                    commitEdit(combo.getSelectionModel().getSelectedItem());
+                    if (gvwCommitInProgress) return;
+                    gvwCommitInProgress = true;
+                    try {
+                        commitEdit(combo.getSelectionModel().getSelectedItem());
+                    } finally {
+                        gvwCommitInProgress = false;
+                    }
                 });
                 combo.focusedProperty().addListener((obs, oldVal, newVal) -> {
-                    if (!newVal) {
-                        // focus lost, commit if changed
-                        commitEdit(combo.getSelectionModel().getSelectedItem());
+                    if (!newVal) { // focus lost
+                        if (gvwCommitInProgress) return;
+                        String sel = combo.getSelectionModel().getSelectedItem();
+                        if (!java.util.Objects.equals(sel, getItem())) {
+                            gvwCommitInProgress = true;
+                            try {
+                                commitEdit(sel);
+                            } finally {
+                                gvwCommitInProgress = false;
+                            }
+                        }
                     }
                 });
             }
@@ -488,6 +538,7 @@ public class MainController {
                     setText(null);
                     setGraphic(combo);
                     combo.requestFocus();
+                    combo.show();
                 }
             }
 
@@ -504,32 +555,129 @@ public class MainController {
                 if (empty) {
                     setText(null);
                     setGraphic(null);
-                } else if (isEditing()) {
-                    Vehicles v = getTableView().getItems().get(getIndex());
+                    setStyle("");
+                    try {
+                        Vehicles prev = getTableView().getItems().get(getIndex());
+                        gvwAreaCellMap.remove(prev);
+                    } catch (Exception ignore) {}
+                    return;
+                }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                gvwAreaCellMap.put(v, this);
+                if (isEditing()) {
                     if (v instanceof HeavyVehicle) {
                         String carbonGroup = v.getCarbonGroup();
                         createCombo(carbonGroup, value);
                         setText(null);
                         setGraphic(combo);
                         combo.requestFocus();
+                        setStyle("");
                     } else {
                         setText(value);
                         setGraphic(null);
+                        setStyle("");
                     }
                 } else {
                     setText(value);
                     setGraphic(null);
+                    setStyle("");
                 }
             }
         });
-        // Add OnEditCommit handler to update HeavyVehicle and refresh table
+        // Add OnEditCommit handler to update HeavyVehicle and refresh table, show Tooltip for warnings (multiple tooltips supported)
         gvwAreaCol.setOnEditCommit(event -> {
             Vehicles v = event.getRowValue();
+            boolean hasWarning = false;
+            StringBuilder messageBuilder = new StringBuilder();
             if (v instanceof HeavyVehicle) {
-                ((HeavyVehicle) v).setGvwArea(event.getNewValue());
+                String newVal = event.getNewValue();
+                String carbonGroup = v.getCarbonGroup();
+
+                // 让 service 层决定校验结论：返回 "ok" 代表通过，否则返回具体错误信息
+                String returnMessage = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), newVal);
+                if (!"ok".equalsIgnoreCase(returnMessage)) {
+                    hasWarning = true;
+                    messageBuilder.append(returnMessage);
+                }
+                // 先写回模型，再刷新；避免刷新使得旧的 cell 引用失效
+                ((HeavyVehicle) v).setGvwArea(newVal);
+                if (hasWarning) {
+                    rowWarningMap.put(v, messageBuilder.toString());
+                } else {
+                    rowWarningMap.remove(v);
+                }
                 vehicleTable.refresh();
+
+                if (hasWarning) {
+                    // 在下一帧获取最新的 cell 并在其附近显示 Tooltip（允许多个同时存在）
+                    Platform.runLater(() -> {
+                        TableCell<Vehicles, String> cell = gvwAreaCellMap.get(v);
+                        String msg = messageBuilder.toString();
+                        Tooltip old = rowTooltipMap.remove(v);
+                        if (old != null) {
+                            old.hide();
+                        }
+                        Tooltip tip = new Tooltip(msg);
+                        tip.setStyle("-fx-font-size: 12px; -fx-background-color: rgba(255,255,200,0.95); -fx-text-fill: black;");
+                        if (cell != null && cell.getScene() != null && cell.isVisible()) {
+                            var b = cell.localToScreen(cell.getBoundsInLocal());
+                            if (b != null) {
+                                double screenX = b.getMaxX() + 8;
+                                double screenY = (b.getMinY() + b.getMaxY()) / 2.0; // 垂直居中
+                                tip.show(cell, screenX, screenY);
+                                rowTooltipMap.put(v, tip);
+                                // 自动隐藏但不影响其它行
+                                PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
+                                hideLater.setOnFinished(e -> {
+                                    tip.hide();
+                                    rowTooltipMap.remove(v, tip);
+                                });
+                                hideLater.play();
+                                return;
+                            }
+                        }
+                        // 兜底：锚到表格左上角偏移，至少能看到（极少触发）
+                        if (vehicleTable != null && vehicleTable.getScene() != null) {
+                            var p = vehicleTable.localToScreen(0, 0);
+                            double screenX = p.getX() + 20;
+                            double screenY = p.getY() + 20;
+                            tip.show(vehicleTable, screenX, screenY);
+                            rowTooltipMap.put(v, tip);
+                            PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
+                            hideLater.setOnFinished(e -> {
+                                tip.hide();
+                                rowTooltipMap.remove(v, tip);
+                            });
+                            hideLater.play();
+                        }
+                    });
+                } else {
+                    // 若本次无警告但之前显示过 Tooltip，则关闭并移除
+                    Tooltip old = rowTooltipMap.remove(v);
+                    if (old != null) {
+                        old.hide();
+                    }
+                }
             }
         });
+    }
+
+    private boolean isGvwAreaMatchingWeight(String gvwArea, Integer grossWeight) {
+        if (grossWeight == null || gvwArea == null) {
+            return false;
+        }
+        // Example: If gvwArea strings are like "1000-2000", parse min and max and check range.
+        try {
+            String[] parts = gvwArea.split("-");
+            if (parts.length == 2) {
+                int min = Integer.parseInt(parts[0].trim());
+                int max = Integer.parseInt(parts[1].trim());
+                return grossWeight > min && grossWeight <= max;
+            }
+        } catch (Exception e) {
+            // parsing error
+        }
+        return false;
     }
 
 }

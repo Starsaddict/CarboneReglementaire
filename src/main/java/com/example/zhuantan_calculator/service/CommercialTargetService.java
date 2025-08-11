@@ -38,4 +38,20 @@ public class CommercialTargetService {
         }
         return commercialTargetRepo.findAllGVWAreasByCarbonGroup(carbonGroup);
     }
+
+    public String ifMatchGVMArea(String carbonGroup, int grossWeight, String gvwArea){
+        List<String> areas = listGvwAreasByCarbonGroup(carbonGroup);
+        String carbonModel = ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) ? "货车" : carbonGroup;
+        if(!areas.contains(gvwArea)){
+            return "该质量段不存在";
+        }
+
+        CommercialTargetRepo commercialTargetRepo = new CommercialTargetRepo(entityManager);
+
+        if(!gvwArea.equals(commercialTargetRepo.findGVWAreaByGVW(grossWeight,carbonModel))){
+            return "质量段与质量不对应";
+        }
+        return "ok";
+
+    }
 }
