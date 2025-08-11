@@ -45,10 +45,6 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Cell;
 import java.io.FileOutputStream;
-import javafx.stage.FileChooser;
-import javafx.event.ActionEvent;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Alert.AlertType;
 
 public class MainController {
 
@@ -219,19 +215,7 @@ public class MainController {
 
         exportButton.setOnAction(this::handleExportExcel);
 
-        energyConsumptionMethod0Col.setVisible(false);
-        energyConsumptionMethod1Col.setVisible(false);
-        energyConsumptionMethod3Col.setVisible(false);
-        target0Col.setVisible(false);
-        target1Col.setVisible(false);
-        target3Col.setVisible(false);
-        bonusCol.setVisible(false);
-        netOilCreditMethod0Col.setVisible(false);
-        netOilCreditMethod1Col.setVisible(false);
-        netOilCreditMethod3Col.setVisible(false);
-        netCarbonCreditMethod0Col.setVisible(false);
-        netCarbonCreditMethod1Col.setVisible(false);
-        netCarbonCreditMethod3Col.setVisible(false);
+        showBaseView();
 
     }
 
@@ -243,6 +227,7 @@ public class MainController {
         Window ownerWindow = importButton.getScene().getWindow();
         File selectedFile = fileChooser.showOpenDialog(ownerWindow);
         if (selectedFile != null) {
+            resetStateForNewImport();
             ExcelReader reader = new ExcelReader();
             List<Map<String, String>> rawRows = reader.read(selectedFile);
 
@@ -270,6 +255,8 @@ public class MainController {
             }
 
             vehicles.setAll(vehiclesList);
+            showBaseView();
+            vehicleTable.refresh();
         }
     }
     private Integer parseIntSafe(String value) {
@@ -430,33 +417,8 @@ public class MainController {
             new ReadOnlyObjectWrapper<>(carbonCredit3Map.get(cellData.getValue()))
         );
         // 3) 刷新表格显示
-
         vehicleTable.refresh();
-
-        // 隐藏基础列
-        fuelTypeCol.setVisible(false);
-        curbWeightCol.setVisible(false);
-        grossWeightCol.setVisible(false);
-        testMassCol.setVisible(false);
-        gvwAreaCol.setVisible(false);
-        energyCol.setVisible(false);
-        salesCol.setVisible(false);
-        carbonGroupCol.setVisible(false);
-
-        energyConsumptionMethod0Col.setVisible(true);
-        energyConsumptionMethod1Col.setVisible(true);
-        energyConsumptionMethod3Col.setVisible(true);
-        target0Col.setVisible(true);
-        target1Col.setVisible(true);
-        target3Col.setVisible(true);
-        bonusCol.setVisible(true);
-        netOilCreditMethod0Col.setVisible(true);
-        netOilCreditMethod1Col.setVisible(true);
-        netOilCreditMethod3Col.setVisible(true);
-        netCarbonCreditMethod0Col.setVisible(true);
-        netCarbonCreditMethod1Col.setVisible(true);
-        netCarbonCreditMethod3Col.setVisible(true);
-
+        showComputedView();
     }
 
     private Double parseDoubleSafe(String value) {
@@ -662,22 +624,88 @@ public class MainController {
         });
     }
 
-    private boolean isGvwAreaMatchingWeight(String gvwArea, Integer grossWeight) {
-        if (grossWeight == null || gvwArea == null) {
-            return false;
+    /** 将界面切回初始（导入前/导入后未计算）的列可见性 */
+    private void showBaseView() {
+        // 基础信息列显示
+        fuelTypeCol.setVisible(true);
+        curbWeightCol.setVisible(true);
+        grossWeightCol.setVisible(true);
+        testMassCol.setVisible(true);
+        gvwAreaCol.setVisible(true);
+        energyCol.setVisible(true);
+        salesCol.setVisible(true);
+        carbonGroupCol.setVisible(true);
+
+        // 计算类列隐藏
+        energyConsumptionMethod0Col.setVisible(false);
+        energyConsumptionMethod1Col.setVisible(false);
+        energyConsumptionMethod3Col.setVisible(false);
+        target0Col.setVisible(false);
+        target1Col.setVisible(false);
+        target3Col.setVisible(false);
+        bonusCol.setVisible(false);
+        netOilCreditMethod0Col.setVisible(false);
+        netOilCreditMethod1Col.setVisible(false);
+        netOilCreditMethod3Col.setVisible(false);
+        netCarbonCreditMethod0Col.setVisible(false);
+        netCarbonCreditMethod1Col.setVisible(false);
+        netCarbonCreditMethod3Col.setVisible(false);
+    }
+
+    /** 将界面切到“已计算完成”的列可见性 */
+    private void showComputedView() {
+        // 基础信息列隐藏
+        fuelTypeCol.setVisible(false);
+        curbWeightCol.setVisible(false);
+        grossWeightCol.setVisible(false);
+        testMassCol.setVisible(false);
+        gvwAreaCol.setVisible(false);
+        energyCol.setVisible(false);
+        salesCol.setVisible(false);
+        carbonGroupCol.setVisible(false);
+
+        // 计算类列显示
+        energyConsumptionMethod0Col.setVisible(true);
+        energyConsumptionMethod1Col.setVisible(true);
+        energyConsumptionMethod3Col.setVisible(true);
+        target0Col.setVisible(true);
+        target1Col.setVisible(true);
+        target3Col.setVisible(true);
+        bonusCol.setVisible(true);
+        netOilCreditMethod0Col.setVisible(true);
+        netOilCreditMethod1Col.setVisible(true);
+        netOilCreditMethod3Col.setVisible(true);
+        netCarbonCreditMethod0Col.setVisible(true);
+        netCarbonCreditMethod1Col.setVisible(true);
+        netCarbonCreditMethod3Col.setVisible(true);
+    }
+
+    /** 隐藏并清空所有行 Tooltip */
+    private void clearRowTooltips() {
+        for (var tip : rowTooltipMap.values()) {
+            try { tip.hide(); } catch (Exception ignore) {}
         }
-        // Example: If gvwArea strings are like "1000-2000", parse min and max and check range.
+        rowTooltipMap.clear();
+    }
+
+    /** 重新导入前/后用于恢复到初始状态的重置方法 */
+    private void resetStateForNewImport() {
+        // 停止可能存在的编辑
         try {
-            String[] parts = gvwArea.split("-");
-            if (parts.length == 2) {
-                int min = Integer.parseInt(parts[0].trim());
-                int max = Integer.parseInt(parts[1].trim());
-                return grossWeight > min && grossWeight <= max;
-            }
-        } catch (Exception e) {
-            // parsing error
+            vehicleTable.edit(-1, null);
+        } catch (Exception ignore) {
         }
-        return false;
+        // 清数据容器
+        vehicles.clear();
+        vehiclesList.clear();
+        rowWarningMap.clear();
+        clearRowTooltips();
+        gvwAreaCellMap.clear();
+        // 还原列可见性
+        showBaseView();
+        // 刷新表格
+        if (vehicleTable != null) vehicleTable.refresh();
     }
 
 }
+
