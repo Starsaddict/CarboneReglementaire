@@ -240,15 +240,12 @@ public class MainController {
                 String warn = validateLightVehicle((LightVehicle) v);
                 if (warn != null && !warn.isEmpty()) {
                     rowWarningMap.put(v, warn);
-                } else {
-                    rowWarningMap.remove(v);
-                }
-                vehicleTable.refresh();
-                if (warn != null && !warn.isEmpty()) {
                     showGvwWarning(v, warn);
                 } else {
+                    rowWarningMap.remove(v);
                     hideGvwWarning(v);
                 }
+                vehicleTable.refresh();
             }
         });
         grossWeightCol.setCellValueFactory(new PropertyValueFactory<>("grossWeight"));
@@ -296,8 +293,6 @@ public class MainController {
                 rowWarningMap.remove(v);
             }
 
-            vehicleTable.refresh();
-            // 轻型车：编辑总质量后也显示/隐藏提示
             if (v instanceof LightVehicle) {
                 if (warn != null && !warn.isEmpty()) {
                     showGvwWarning(v, warn);
@@ -305,6 +300,7 @@ public class MainController {
                     hideGvwWarning(v);
                 }
             }
+            vehicleTable.refresh();
         });
         testMassCol.setCellValueFactory(
                 cellData -> {
@@ -363,12 +359,12 @@ public class MainController {
                 } else {
                     rowWarningMap.remove(v);
                 }
-                vehicleTable.refresh();
                 if (warn != null && !warn.isEmpty()) {
                     showGvwWarning(v, warn);
                 } else {
                     hideGvwWarning(v);
                 }
+                vehicleTable.refresh();
             }
         });
         gvwAreaCol.setCellValueFactory(
@@ -478,7 +474,6 @@ public class MainController {
 
             vehicles.setAll(vehiclesList);
             showBaseView();
-            vehicleTable.refresh();
             validateGvwAfterImport();
             validateLightAfterImport();
         }
@@ -670,6 +665,22 @@ public class MainController {
         col.setStyle("-fx-alignment: CENTER-RIGHT;");
     }
 
+    /**
+     * 根据车辆告警状态为单元格应用/清除错误样式，并处理提示组件。
+     */
+    private void applyErrorStyle(Vehicles v, TableCell<?,?> cell) {
+        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
+            cell.setStyle(CELL_ERROR_STYLE);
+            attachHoverWarning(cell, v);
+        } else {
+            cell.setStyle("");
+            // 无告警时移除右键提示与悬浮提示
+            cell.setOnContextMenuRequested(null);
+            cell.setContextMenu(null);
+            cell.setTooltip(null);
+        }
+    }
+
     private void setupGvwAreaComboCell() {
         gvwAreaCol.setCellFactory(col -> new TableCell<Vehicles, String>() {
             private ComboBox<String> combo;
@@ -781,40 +792,16 @@ public class MainController {
                         setText(null);
                         setGraphic(combo);
                         combo.requestFocus();
-                        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
-                            setStyle(CELL_ERROR_STYLE);
-                            attachHoverWarning(this, v);
-                        } else {
-                            setStyle("");
-                            setOnContextMenuRequested(null);
-                            setContextMenu(null);
-                            setTooltip(null);
-                        }
+                        applyErrorStyle(v, this);
                     } else {
                         setText(value);
                         setGraphic(null);
-                        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
-                            setStyle(CELL_ERROR_STYLE);
-                            attachHoverWarning(this, v);
-                        } else {
-                            setStyle("");
-                            setOnContextMenuRequested(null);
-                            setContextMenu(null);
-                            setTooltip(null);
-                        }
+                        applyErrorStyle(v, this);
                     }
                 } else {
                     setText(value);
                     setGraphic(null);
-                    if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
-                        setStyle(CELL_ERROR_STYLE);
-                        attachHoverWarning(this, v);
-                    } else {
-                        setStyle("");
-                        setOnContextMenuRequested(null);
-                        setContextMenu(null);
-                        setTooltip(null);
-                    }
+                    applyErrorStyle(v, this);
                 }
             }
         });
@@ -849,13 +836,13 @@ public class MainController {
                 } else {
                     rowWarningMap.remove(v);
                 }
-                vehicleTable.refresh();
 
                 if (hasWarning) {
                     showGvwWarning(v, messageBuilder.toString());
                 } else {
                     hideGvwWarning(v);
                 }
+                vehicleTable.refresh();
             }
         });
     }
@@ -909,8 +896,6 @@ public class MainController {
         }
 
         if (!changed.isEmpty()) {
-            vehicleTable.refresh();
-            // 仅对变化的车辆显示/隐藏提示
             for (Vehicles v : changed) {
                 String msg = rowWarningMap.get(v);
                 if (msg != null && !msg.isEmpty()) {
@@ -919,50 +904,48 @@ public class MainController {
                     hideGvwWarning(v);
                 }
             }
+            vehicleTable.refresh();
         }
     }
 
     // 新增: 轻型车导入后批量校验（测试质量 vs. 计算值）
+// 优化版：轻型车导入后批量校验（仅变化行）
     private void validateLightAfterImport() {
-        boolean anyChange = false;
+        java.util.Set<Vehicles> changed = new java.util.HashSet<>();
+
         for (Vehicles v : vehiclesList) {
             if (v instanceof LightVehicle) {
                 String msg = validateLightVehicle((LightVehicle) v);
-                if (msg != null && !msg.isEmpty()) {
-                    rowWarningMap.put(v, msg);
-                    anyChange = true;
-                } else {
-                    if (rowWarningMap.remove(v) != null) anyChange = true;
-                }
-            }
-        }
+                String prev = rowWarningMap.get(v);
 
-        if (anyChange) {
-            vehicleTable.refresh();
-            // 轻型车：导入后显示浮窗提示（不担心抢占焦点）
-            for (Vehicles v : vehiclesList) {
-                if (v instanceof LightVehicle) {
-                    String msg = rowWarningMap.get(v);
-                    if (msg != null && !msg.isEmpty()) {
-                        showGvwWarning(v, msg); // 无 GVW 锚点会回退到表格位置
-                    } else {
-                        hideGvwWarning(v);
+                if (msg != null && !msg.isEmpty()) {
+                    // 新增或信息变化才记录
+                    if (!java.util.Objects.equals(prev, msg)) {
+                        rowWarningMap.put(v, msg);
+                        changed.add(v);
+                    }
+                } else {
+                    // 原本有告警，现在通过
+                    if (rowWarningMap.remove(v) != null) {
+                        changed.add(v);
                     }
                 }
             }
         }
+
+        if (!changed.isEmpty()) {
+            for (Vehicles v : changed) {
+                String msg = rowWarningMap.get(v);
+                if (msg != null && !msg.isEmpty()) {
+                    showGvwWarning(v, msg);
+                } else {
+                    hideGvwWarning(v);
+                }
+            }
+            vehicleTable.refresh();
+        }
     }
 
-    /**
-     * 轻型车校验：
-     * 仅在 testMass(测试质量) 不为空时进行校验：
-     * 1) 若 curbWeight 或 grossWeight 为空，或 curbWeight &gt; grossWeight，则返回“测试质量无法计算，请核实信息”
-     * 2) 否则按 N1/M2 的规则计算期望测试质量 goal_tm：
-     *    - N1: goal_tm = curb + 100 + (gross - curb - 100) * 0.15
-     *    - 其他(如 M2): goal_tm = curb + 100 + (gross - curb - 100) * 0.28
-     *    若 |goal_tm - testMass| &gt; 0.5，则返回“测试质量与计算结果不符，计算时以测试质量为准”
-     * 返回 null 表示通过。
-     */
     private String validateLightVehicle(LightVehicle lv) {
         if (lv == null) return null;
 
