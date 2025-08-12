@@ -1,14 +1,12 @@
 package com.example.zhuantan_calculator.controller;
 
 import com.example.zhuantan_calculator.functionalInterface.*;
-import com.example.zhuantan_calculator.model.CommercialTarget;
 import com.example.zhuantan_calculator.model.HeavyVehicle;
 import com.example.zhuantan_calculator.model.LightVehicle;
 import com.example.zhuantan_calculator.service.*;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
-import javafx.beans.property.SimpleObjectProperty;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -23,14 +21,7 @@ import javafx.scene.control.Tooltip;
 
 import java.io.File;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
 
-import javafx.animation.PauseTransition;
-import javafx.util.Duration;
-import javafx.application.Platform;
 import javafx.util.converter.DoubleStringConverter;
 
 import com.example.zhuantan_calculator.model.Vehicles;
@@ -48,6 +39,8 @@ import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Cell;
 import java.io.FileOutputStream;
+
+import java.util.*;
 
 public class MainController {
 
@@ -89,11 +82,13 @@ public class MainController {
     // Anchor map for GVW area cells to show PopOver at the exact cell
     private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new java.util.HashMap<>();
     // Anchor map for LightVehicle testMass cells to show Tooltip at the testMass cell
-    private final java.util.Map<Vehicles, TableCell<Vehicles, Double>> testMassCellMap = new java.util.HashMap<>();
+    private final Map<Vehicles, TableCell<Vehicles, Double>> testMassCellMap = new HashMap<>();
     // Guard to prevent double commit when both onAction and focus listeners fire
     private boolean gvwCommitInProgress = false;
     // Map to track per-row Tooltip for warnings (multiple simultaneous tooltips)
-    private final java.util.Map<Vehicles, Tooltip> rowTooltipMap = new java.util.HashMap<>();
+    private final Map<Vehicles, Tooltip> rowTooltipMap = new HashMap<>();
+    // Map of test mass recommended
+    private final Map<Vehicles, Double> TMRecommend = new HashMap<>();
 
     // 单元格错误高亮样式（淡红，不影响整行）
     private static final String CELL_ERROR_STYLE = "-fx-background-color: rgba(255,0,0,0.18);";
@@ -221,13 +216,21 @@ public class MainController {
                 super.updateItem(value, empty);
                 if (empty) {
                     setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
                     return;
                 }
                 Vehicles v = getTableView().getItems().get(getIndex());
                 if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
                     setStyle(CELL_ERROR_STYLE);
+                    attachHoverWarning(this, v);
+                    attachRightClickWarning(this, v);
                 } else {
                     setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
                 }
             }
         });
@@ -257,13 +260,21 @@ public class MainController {
                 super.updateItem(value, empty);
                 if (empty) {
                     setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
                     return;
                 }
                 Vehicles v = getTableView().getItems().get(getIndex());
-                if ((v instanceof LightVehicle || v instanceof HeavyVehicle) && rowWarningMap.containsKey(v)) {
+                if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
                     setStyle(CELL_ERROR_STYLE);
+                    attachHoverWarning(this, v);
+                    attachRightClickWarning(this, v);
                 } else {
                     setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
                 }
             }
         });
@@ -336,9 +347,9 @@ public class MainController {
                     if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
                         setStyle(CELL_ERROR_STYLE);
                         attachHoverWarning(this, v);
+                        attachRightClickWarning(this, v);
                     } else {
                         setStyle("");
-                        // 无告警时移除右键提示
                         setOnContextMenuRequested(null);
                         setContextMenu(null);
                         setTooltip(null);
@@ -667,14 +678,15 @@ public class MainController {
 
     /**
      * 根据车辆告警状态为单元格应用/清除错误样式，并处理提示组件。
+     * 同时挂载悬浮提示和右键菜单（如有告警）。
      */
     private void applyErrorStyle(Vehicles v, TableCell<?,?> cell) {
-        if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
+        if (rowWarningMap.containsKey(v)) {
             cell.setStyle(CELL_ERROR_STYLE);
             attachHoverWarning(cell, v);
+            attachRightClickWarning(cell, v);
         } else {
             cell.setStyle("");
-            // 无告警时移除右键提示与悬浮提示
             cell.setOnContextMenuRequested(null);
             cell.setContextMenu(null);
             cell.setTooltip(null);
@@ -736,7 +748,7 @@ public class MainController {
                     if (!newVal) { // focus lost
                         if (gvwCommitInProgress) return;
                         String sel = combo.getSelectionModel().getSelectedItem(); // 可能为 null
-                        if (!java.util.Objects.equals(sel, getItem())) {
+                        if (!Objects.equals(sel, getItem())) {
                             gvwCommitInProgress = true;
                             try {
                                 commitEdit(sel);
@@ -792,16 +804,30 @@ public class MainController {
                         setText(null);
                         setGraphic(combo);
                         combo.requestFocus();
+                        // 仅对重型车在质量段列应用错误样式/提示/右键
                         applyErrorStyle(v, this);
                     } else {
+                        // 轻型车：质量段列不标红、不提示、不右键
                         setText(value);
                         setGraphic(null);
-                        applyErrorStyle(v, this);
+                        setStyle("");
+                        setTooltip(null);
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
                     }
                 } else {
                     setText(value);
                     setGraphic(null);
-                    applyErrorStyle(v, this);
+                    if (v instanceof HeavyVehicle) {
+                        // 仅重型车在质量段列显示错误样式/提示/右键
+                        applyErrorStyle(v, this);
+                    } else {
+                        // 轻型车：保持干净
+                        setStyle("");
+                        setTooltip(null);
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
+                    }
                 }
             }
         });
@@ -864,7 +890,7 @@ public class MainController {
 
     // 新增: 导入后批量校验GVW并显示警告（优化：仅变化行刷新/提示，支持清空）
     private void validateGvwAfterImport() {
-        java.util.Set<Vehicles> changed = new java.util.HashSet<>();
+        Set<Vehicles> changed = new HashSet<>();
 
         for (Vehicles v : vehiclesList) {
             if (v instanceof HeavyVehicle) {
@@ -884,7 +910,7 @@ public class MainController {
 
                 if (!"ok".equalsIgnoreCase(msg)) {
                     String prev = rowWarningMap.put(v, msg);
-                    if (!java.util.Objects.equals(prev, msg)) {
+                    if (!Objects.equals(prev, msg)) {
                         changed.add(v); // 新增或信息变化
                     }
                 } else {
@@ -911,7 +937,7 @@ public class MainController {
     // 新增: 轻型车导入后批量校验（测试质量 vs. 计算值）
 // 优化版：轻型车导入后批量校验（仅变化行）
     private void validateLightAfterImport() {
-        java.util.Set<Vehicles> changed = new java.util.HashSet<>();
+        Set<Vehicles> changed = new HashSet<>();
 
         for (Vehicles v : vehiclesList) {
             if (v instanceof LightVehicle) {
@@ -920,7 +946,7 @@ public class MainController {
 
                 if (msg != null && !msg.isEmpty()) {
                     // 新增或信息变化才记录
-                    if (!java.util.Objects.equals(prev, msg)) {
+                    if (!Objects.equals(prev, msg)) {
                         rowWarningMap.put(v, msg);
                         changed.add(v);
                     }
@@ -953,12 +979,11 @@ public class MainController {
         Integer curbWeight = lv.getCurbWeight();
         Integer grossWeight = lv.getGrossWeight();
         if (testMass == null) {
-            if(!(curbWeight ==null) &&!(grossWeight == null)) {
+            if(curbWeight != null && grossWeight != null) {
                 return null;
             }
             return "测试质量无法计算，请核实信息";
         }
-
 
         if(curbWeight == null || grossWeight == null){
             return null;
@@ -968,7 +993,7 @@ public class MainController {
         }
 
         // 根据车型(N1/M2)计算 goal_tm
-        String carbonModel = lv.getCarbonModel(); // 与用户代码保持一致：使用 getCarbonModel() 判定 N1
+        String carbonModel = lv.getCarbonModel();
         double curb = curbWeight.doubleValue();
         double gross = grossWeight.doubleValue();
 
@@ -976,9 +1001,10 @@ public class MainController {
         double goal_tm = curb + 100.0 + (gross - curb - 100.0) * ratio;
 
         if (Math.abs(goal_tm - testMass) > 0.5) {
-            return "测试质量与计算结果不符，计算时以测试质量为准";
+            TMRecommend.put(lv, goal_tm);
+            return "测试质量与计算结果不符，计算时以测试质量为准。右键查看根据计算结果";
         }
-        return null; // 通过
+        return null;
     }
 
     private void showBaseView() {
@@ -1063,44 +1089,65 @@ public class MainController {
 
     /**
      * 在指定单元格上挂载“悬浮→展示提示”的 Tooltip（仅当该行存在告警时生效）。
-     * 提示为圆角样式，并在显示前动态读取最新文案。
+     * 若为轻型车且存在推荐测试质量，则在提示文案中追加推荐值，
+     * 并提示“右键可一键替换为计算值”。
      */
     private void attachHoverWarning(javafx.scene.control.TableCell<?, ?> cell, Vehicles v) {
-        // 取消右键菜单（若之前绑定过）
-        cell.setOnContextMenuRequested(null);
-        cell.setContextMenu(null);
-
+        // 不移除右键菜单；允许同时存在悬浮与右键动作
         String defaultMsg = rowWarningMap.get(v);
         if (defaultMsg == null || defaultMsg.isEmpty()) {
             cell.setTooltip(null);
-            return; // 无告警不挂载
+            return;
         }
 
-        // 悬浮提示：在显示前取最新文案
+        // 组合提示文案：默认告警 + 可选推荐值
+        StringBuilder msgBuilder = new StringBuilder();
+        msgBuilder.append(warningMessageProvider.get(v, defaultMsg));
+
+        Double rec = null;
+        if (v instanceof LightVehicle) {
+            rec = TMRecommend.get(v);
+        }
+        if (rec != null) {
+            java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.0");
+            msgBuilder.append("\n建议测试质量：").append(df.format(rec)).append(" kg");
+            msgBuilder.append("\n(右键此单元格 → 使用计算值替换)");
+        }
+
         Tooltip tip = new Tooltip();
-        tip.setShowDelay(javafx.util.Duration.millis(180)); // 更快显示
-        tip.setHideDelay(javafx.util.Duration.millis(120)); // 更快收起
-        tip.setShowDuration(javafx.util.Duration.seconds(8)); // 显示时间更长
+        tip.setShowDelay(javafx.util.Duration.millis(180));
+        tip.setHideDelay(javafx.util.Duration.millis(120));
+        tip.setShowDuration(javafx.util.Duration.seconds(8));
         tip.setOnShowing(e -> {
+            // 显示前动态刷新文案
             String latest = rowWarningMap.get(v);
             if (latest == null || latest.isEmpty()) {
                 tip.setText("");
             } else {
-                String finalMsg = warningMessageProvider.get(v, latest);
-                tip.setText(finalMsg);
+                StringBuilder latestMsg = new StringBuilder();
+                latestMsg.append(warningMessageProvider.get(v, latest));
+                Double r = (v instanceof LightVehicle) ? TMRecommend.get(v) : null;
+                if (r != null) {
+                    java.text.DecimalFormat dff = new java.text.DecimalFormat("#,##0.0");
+                    latestMsg.append("\n建议测试质量：").append(dff.format(r)).append(" kg");
+                    latestMsg.append("\n(右键此单元格 → 使用计算值替换)");
+                }
+                tip.setText(latestMsg.toString());
             }
         });
-        // 圆角 + 轻微内边距 + 柔和底色
-        tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(255,255,220,0.95); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
+        // 浅灰底 + 圆角
+        tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(245,245,245,0.98); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
         cell.setTooltip(tip);
+
+        // 确保右键菜单可用（带一键替换动作）
+        attachRightClickWarning(cell, v);
     }
 
     /**
-     * 在指定单元格上挂载“右键→查看提示”的上下文菜单（仅当该行存在告警时生效）。
-     * 不主动弹窗；用户右键时显示。
+     * 在指定单元格上挂载“右键→查看提示/执行修正”的上下文菜单（仅当该行存在告警时生效）。
+     * 若为轻型车且存在推荐测试质量，则提供一键替换动作。
      */
     private void attachRightClickWarning(javafx.scene.control.TableCell<?, ?> cell, Vehicles v) {
-        // 先清理旧的 handler，避免重复绑定
         cell.setOnContextMenuRequested(null);
         cell.setContextMenu(null);
 
@@ -1109,7 +1156,6 @@ public class MainController {
             return; // 无告警不挂载
         }
 
-        // 惰性创建：右键时取最新文案
         cell.setOnContextMenuRequested(e -> {
             String latest = rowWarningMap.get(v);
             if (latest == null || latest.isEmpty()) return;
@@ -1117,11 +1163,39 @@ public class MainController {
 
             javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
             javafx.scene.control.MenuItem info = new javafx.scene.control.MenuItem(finalMsg);
-            info.setDisable(true); // 仅展示信息，不可点击
+            info.setDisable(true);
             menu.getItems().add(info);
-            // 若未来需要更多操作项，可在此追加 menu item
+
+            // 若存在推荐值，追加可执行操作
+            if (v instanceof LightVehicle) {
+                Double rec = TMRecommend.get(v);
+                if (rec != null) {
+                    java.text.DecimalFormat df = new java.text.DecimalFormat("#,##0.0");
+                    javafx.scene.control.SeparatorMenuItem sep = new javafx.scene.control.SeparatorMenuItem();
+                    javafx.scene.control.MenuItem apply = new javafx.scene.control.MenuItem("使用推荐测试质量（" + df.format(rec) + " kg）替换");
+                    apply.setOnAction(ev -> applyRecommendedTestMass((LightVehicle) v, rec));
+                    menu.getItems().addAll(sep, apply);
+                }
+            }
+
             menu.show(cell, e.getScreenX(), e.getScreenY());
             e.consume();
         });
+    }
+
+    /**
+     * 将轻型车测试质量替换为推荐计算值，并触发一次校验与界面刷新。
+     */
+    private void applyRecommendedTestMass(LightVehicle lv, double rec) {
+        lv.setTestMass(rec);
+        String warn = validateLightVehicle(lv);
+        if (warn != null && !warn.isEmpty()) {
+            rowWarningMap.put(lv, warn);
+            showGvwWarning(lv, warn);
+        } else {
+            rowWarningMap.remove(lv);
+            hideGvwWarning(lv);
+        }
+        vehicleTable.refresh();
     }
 }
