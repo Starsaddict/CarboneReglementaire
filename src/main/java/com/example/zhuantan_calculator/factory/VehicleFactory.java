@@ -14,7 +14,7 @@ public class VehicleFactory {
         }
     }
 
-    public static Vehicles createVehicleFromData(int year, String enterprise, String model, Integer curbWeight, Integer grossWeight, Double testMass, String gvmArea, Double energy, String fuelType, String carbonGroup, int sales){
+    public static Vehicles createVehicleFromData(int year, String enterprise, String model, Integer curbWeight, Integer grossWeight, Double testMass, String gvmArea, Double energy, String fuelType, String carbonGroup, Integer sales){
         // 共同参数
         Vehicles vehicle = createVehicleByType(carbonGroup);
         vehicle.setYear(year);
@@ -28,6 +28,9 @@ public class VehicleFactory {
             vehicle.setCarbonModel("货车");
         }else{
             vehicle.setCarbonModel(carbonGroup);
+        }
+        if(sales == null){
+            sales = 0;
         }
         vehicle.setSales(sales);
 

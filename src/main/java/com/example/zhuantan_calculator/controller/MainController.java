@@ -112,6 +112,23 @@ public class MainController {
     private TargetProvider targetProvider;
     private BonusProvider bonusProvider;
 
+    // —— 可自定义的提示文案提供器 ——
+    @FunctionalInterface
+    interface WarningMessageProvider {
+        /**
+         * @param v         车辆对象
+         * @param defaultMsg 系统生成/校验得到的默认提示
+         * @return 供界面展示的最终提示文案
+         */
+        String get(Vehicles v, String defaultMsg);
+    }
+    // 默认：直接使用系统生成的提示
+    private WarningMessageProvider warningMessageProvider = (v, def) -> def;
+
+    public void setWarningMessageProvider(WarningMessageProvider provider) {
+        this.warningMessageProvider = (provider == null) ? (v, d) -> d : provider;
+    }
+
     // —— Null-safe converters：空字符串 ⇒ null —— //
     private static final class NullSafeIntegerStringConverter extends IntegerStringConverter {
         @Override
@@ -150,15 +167,34 @@ public class MainController {
                 if (empty || item == null) {
                     setStyle("");
                     setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
                 } else {
-                    String msg = rowWarningMap.get(item);
-                    if (msg != null && !msg.isEmpty()) {
-                        // 不再整行标红；仅保留行悬浮提示
-                        setStyle("");
-                        setTooltip(new Tooltip(msg));
-                    } else {
-                        setStyle("");
+                    // 保持行样式为默认；行提示改为悬浮查看（如果需要，在未来可添加整行标红）
+                    setStyle("");
+                    // 动态悬浮提示，显示之前缓存的报错信息
+                    String latest = rowWarningMap.get(item);
+                    if (latest == null || latest.isEmpty()) {
                         setTooltip(null);
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
+                    } else {
+                        Tooltip tip = new Tooltip();
+                        tip.setShowDelay(javafx.util.Duration.millis(260)); // 行级稍慢显示
+                        tip.setHideDelay(javafx.util.Duration.millis(150)); // 行级稍快收起
+                        tip.setShowDuration(javafx.util.Duration.seconds(8)); // 显示时间更长
+                        tip.setOnShowing(e -> {
+                            String cur = rowWarningMap.get(item);
+                            if (cur == null || cur.isEmpty()) {
+                                tip.setText("");
+                            } else {
+                                tip.setText(warningMessageProvider.get(item, cur));
+                            }
+                        });
+                        tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(240,248,255,0.95); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
+                        setTooltip(tip);
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
                     }
                 }
             }
@@ -199,11 +235,7 @@ public class MainController {
             Vehicles v = evt.getRowValue();
             Integer newVal = evt.getNewValue();
             if (v instanceof LightVehicle) {
-                try {
-                    ((LightVehicle) v).setCurbWeight(newVal);
-                } catch (Exception ex) {
-                    ((LightVehicle) v).setCurbWeight(null);
-                }
+                ((LightVehicle) v).setCurbWeight(newVal);
                 // 轻型车：改动整备质量后重新校验
                 String warn = validateLightVehicle((LightVehicle) v);
                 if (warn != null && !warn.isEmpty()) {
@@ -241,20 +273,12 @@ public class MainController {
         grossWeightCol.setOnEditCommit(evt -> {
             Vehicles v = evt.getRowValue();
             Integer newVal = evt.getNewValue();
-            try {
-                // 允许清空：当输入为空字符串时，IntegerStringConverter 会抛异常，这里兜底为 null
-                // 但由于我们使用了 IntegerStringConverter 的默认转换，正常情况下 newVal 已经是 Integer
-                // 这里仅在出现异常或特殊输入时回退到 null
-                // 将值写回模型
-                v.setGrossWeight(newVal);
-            } catch (Exception ex) {
-                v.setGrossWeight(null);
-            }
+            // 直接写回：NullSafeIntegerStringConverter 已保证空串 -> null
+            v.setGrossWeight(newVal);
 
             // —— 编辑总质量后，针对不同车型重新校验 —— //
             String warn = null;
             if (v instanceof HeavyVehicle) {
-                // 若已有 gvwArea，则用 service 复核匹配性
                 String gvw = ((HeavyVehicle) v).getGvwArea();
                 if (gvw != null && !gvw.isBlank()) {
                     String msg = commercialTargetService.ifMatchGVMArea(v.getCarbonGroup(), v.getGrossWeight(), gvw);
@@ -263,7 +287,6 @@ public class MainController {
                     }
                 }
             } else if (v instanceof LightVehicle) {
-                // 轻型车按既有逻辑校验（不改动 validateLightVehicle 的实现）
                 warn = validateLightVehicle((LightVehicle) v);
             }
 
@@ -316,8 +339,13 @@ public class MainController {
                     // 轻型车：该列为错误时标红
                     if (v instanceof LightVehicle && rowWarningMap.containsKey(v)) {
                         setStyle(CELL_ERROR_STYLE);
+                        attachHoverWarning(this, v);
                     } else {
                         setStyle("");
+                        // 无告警时移除右键提示
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
+                        setTooltip(null);
                     }
                 }
             };
@@ -327,11 +355,7 @@ public class MainController {
             Vehicles v = evt.getRowValue();
             Double newVal = evt.getNewValue();
             if (v instanceof LightVehicle) {
-                try {
-                    ((LightVehicle) v).setTestMass(newVal);
-                } catch (Exception ex) {
-                    ((LightVehicle) v).setTestMass(null);
-                }
+                ((LightVehicle) v).setTestMass(newVal);
                 // 轻型车：改动测试质量后重新校验
                 String warn = validateLightVehicle((LightVehicle) v);
                 if (warn != null && !warn.isEmpty()) {
@@ -389,25 +413,25 @@ public class MainController {
                     fuelType = "天然气-CNG";
                 }
             }
-            System.out.println(v.getModel()+"的燃料类型为" + fuelType);
+
             Double coeff = energyConversionService.computeConversionCoeff(fuelType, v.computeCarbonFuelType(), method);
             if ("汽油".equals(fuelType) || "柴油".equals(fuelType)) {
                 coeff = 1.0;
             }
-            System.out.println(v.getModel()+"的燃料转换系数为" + coeff);
+
             return coeff;
         };
         newEnergyThresholdProvider = v -> {
             Double threshold = newEnergyThresoldService.computeNewEnergyThreshold(v.getYear(), v.getCarbonGroup());
             double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
-            System.out.println("threshold: " + threshold + ", penetrationRate: " + penetrationRate);
+
             return threshold;
         };
         targetProvider = (HeavyVehicle v, int method) -> commercialTargetService.getTarget(v.getYear(), v.getCarbonModel(), v.getFuelType(), v.getGrossWeight(), v.getGvwArea(), method);
         bonusProvider = v -> {
             double threshold = newEnergyThresholdProvider.getEnergyThreshold(v);
             double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
-            System.out.println(v.getModel() + " 新能源渗透率：" + penetrationRate);
+
             return penetrationRate >= threshold ? 1.03 : 1;
         };
 
@@ -553,9 +577,10 @@ public class MainController {
 
             double bonus = bonusProvider.calculateBonus(v);
 
-            double credit0 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 0);
-            double credit1 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 1);
-            double credit3 = v.computeNetOilCredit(bonusProvider, targetProvider, convertionProvider, 3);
+            double credit0 = v.computeNetOilCredit(bonus, target0, consumption0);
+            double credit1 = v.computeNetOilCredit(bonus, target1, consumption1);
+            double credit3 = v.computeNetOilCredit(bonus, target3, consumption3);
+            credit0Map.put(v, credit0);
             credit1Map.put(v, credit1);
             credit3Map.put(v, credit3);
 
@@ -577,7 +602,6 @@ public class MainController {
 
             bonusMap.put(v, bonus);
 
-            credit0Map.put(v, credit0);
         }
         // 取数
         energyConsumptionMethod0Col.setCellValueFactory(cellData ->
@@ -759,16 +783,24 @@ public class MainController {
                         combo.requestFocus();
                         if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
                             setStyle(CELL_ERROR_STYLE);
+                            attachHoverWarning(this, v);
                         } else {
                             setStyle("");
+                            setOnContextMenuRequested(null);
+                            setContextMenu(null);
+                            setTooltip(null);
                         }
                     } else {
                         setText(value);
                         setGraphic(null);
                         if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
                             setStyle(CELL_ERROR_STYLE);
+                            attachHoverWarning(this, v);
                         } else {
                             setStyle("");
+                            setOnContextMenuRequested(null);
+                            setContextMenu(null);
+                            setTooltip(null);
                         }
                     }
                 } else {
@@ -776,8 +808,12 @@ public class MainController {
                     setGraphic(null);
                     if (v instanceof HeavyVehicle && rowWarningMap.containsKey(v)) {
                         setStyle(CELL_ERROR_STYLE);
+                        attachHoverWarning(this, v);
                     } else {
                         setStyle("");
+                        setOnContextMenuRequested(null);
+                        setContextMenu(null);
+                        setTooltip(null);
                     }
                 }
             }
@@ -825,53 +861,11 @@ public class MainController {
     }
 
     private void showGvwWarning(Vehicles v, String msg) {
-        Platform.runLater(() -> {
-            // 优先：轻型车 — 在“测试质量”单元格右侧显示
-            TableCell<Vehicles, ?> anchorCell = null;
-            if (v instanceof LightVehicle) {
-                anchorCell = testMassCellMap.get(v);
-            }
-            // 次优：重型车 — 在“质量段”单元格右侧显示
-            if (anchorCell == null && v instanceof HeavyVehicle) {
-                anchorCell = gvwAreaCellMap.get(v);
-            }
-            Tooltip old = rowTooltipMap.remove(v);
-            if (old != null) {
-                try { old.hide(); } catch (Exception ignore) {}
-            }
-            Tooltip tip = new Tooltip(msg);
-            tip.setStyle("-fx-font-size: 12px; -fx-background-color: rgba(255,255,200,0.95); -fx-text-fill: black;");
-            if (anchorCell != null && anchorCell.getScene() != null && anchorCell.isVisible()) {
-                var b = anchorCell.localToScreen(anchorCell.getBoundsInLocal());
-                if (b != null) {
-                    double screenX = b.getMaxX() + 8;
-                    double screenY = (b.getMinY() + b.getMaxY()) / 2.0;
-                    tip.show(anchorCell, screenX, screenY);
-                    rowTooltipMap.put(v, tip);
-                    PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
-                    hideLater.setOnFinished(e -> {
-                        tip.hide();
-                        rowTooltipMap.remove(v, tip);
-                    });
-                    hideLater.play();
-                    return;
-                }
-            }
-            // 最后：回退到表格位置
-            if (vehicleTable != null && vehicleTable.getScene() != null) {
-                var p = vehicleTable.localToScreen(0, 0);
-                double screenX = p.getX() + 20;
-                double screenY = p.getY() + 20;
-                tip.show(vehicleTable, screenX, screenY);
-                rowTooltipMap.put(v, tip);
-                PauseTransition hideLater = new PauseTransition(Duration.seconds(4));
-                hideLater.setOnFinished(e -> {
-                    tip.hide();
-                    rowTooltipMap.remove(v, tip);
-                });
-                hideLater.play();
-            }
-        });
+        // 保留存储逻辑（行提示/样式依旧依赖 rowWarningMap），不再自动弹出浮窗
+        if (msg != null && !msg.isEmpty()) {
+            rowWarningMap.put(v, msg);
+        }
+        // 如需仍保留自动弹窗，可将本方法恢复为原实现
     }
 
     private void hideGvwWarning(Vehicles v) {
@@ -881,27 +875,43 @@ public class MainController {
         }
     }
 
-    // 新增: 导入后批量校验GVW并显示警告
+    // 新增: 导入后批量校验GVW并显示警告（优化：仅变化行刷新/提示，支持清空）
     private void validateGvwAfterImport() {
-        boolean anyChange = false;
+        java.util.Set<Vehicles> changed = new java.util.HashSet<>();
+
         for (Vehicles v : vehiclesList) {
             if (v instanceof HeavyVehicle) {
                 String gvw = ((HeavyVehicle) v).getGvwArea();
-                if (gvw != null && !gvw.isBlank()) {
-                    String carbonGroup = v.getCarbonGroup();
-                    String msg = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), gvw);
-                    if (!"ok".equalsIgnoreCase(msg)) {
-                        rowWarningMap.put(v, msg);
-                        anyChange = true;
-                    } else {
-                        if (rowWarningMap.remove(v) != null) anyChange = true;
+
+                // 情况一：质量段为空/空白 —— 视为清理告警
+                if (gvw == null || gvw.isBlank()) {
+                    if (rowWarningMap.remove(v) != null) {
+                        changed.add(v);
+                    }
+                    continue; // 下一辆
+                }
+
+                // 情况二：有质量段，走 service 校验
+                String carbonGroup = v.getCarbonGroup();
+                String msg = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), gvw);
+
+                if (!"ok".equalsIgnoreCase(msg)) {
+                    String prev = rowWarningMap.put(v, msg);
+                    if (!java.util.Objects.equals(prev, msg)) {
+                        changed.add(v); // 新增或信息变化
+                    }
+                } else {
+                    if (rowWarningMap.remove(v) != null) {
+                        changed.add(v); // 原本有告警，现在通过
                     }
                 }
             }
         }
-        if (anyChange) {
+
+        if (!changed.isEmpty()) {
             vehicleTable.refresh();
-            for (Vehicles v : vehiclesList) {
+            // 仅对变化的车辆显示/隐藏提示
+            for (Vehicles v : changed) {
                 String msg = rowWarningMap.get(v);
                 if (msg != null && !msg.isEmpty()) {
                     showGvwWarning(v, msg);
@@ -1068,5 +1078,67 @@ public class MainController {
     }
 
 
-}
+    /**
+     * 在指定单元格上挂载“悬浮→展示提示”的 Tooltip（仅当该行存在告警时生效）。
+     * 提示为圆角样式，并在显示前动态读取最新文案。
+     */
+    private void attachHoverWarning(javafx.scene.control.TableCell<?, ?> cell, Vehicles v) {
+        // 取消右键菜单（若之前绑定过）
+        cell.setOnContextMenuRequested(null);
+        cell.setContextMenu(null);
 
+        String defaultMsg = rowWarningMap.get(v);
+        if (defaultMsg == null || defaultMsg.isEmpty()) {
+            cell.setTooltip(null);
+            return; // 无告警不挂载
+        }
+
+        // 悬浮提示：在显示前取最新文案
+        Tooltip tip = new Tooltip();
+        tip.setShowDelay(javafx.util.Duration.millis(180)); // 更快显示
+        tip.setHideDelay(javafx.util.Duration.millis(120)); // 更快收起
+        tip.setShowDuration(javafx.util.Duration.seconds(8)); // 显示时间更长
+        tip.setOnShowing(e -> {
+            String latest = rowWarningMap.get(v);
+            if (latest == null || latest.isEmpty()) {
+                tip.setText("");
+            } else {
+                String finalMsg = warningMessageProvider.get(v, latest);
+                tip.setText(finalMsg);
+            }
+        });
+        // 圆角 + 轻微内边距 + 柔和底色
+        tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(255,255,220,0.95); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
+        cell.setTooltip(tip);
+    }
+
+    /**
+     * 在指定单元格上挂载“右键→查看提示”的上下文菜单（仅当该行存在告警时生效）。
+     * 不主动弹窗；用户右键时显示。
+     */
+    private void attachRightClickWarning(javafx.scene.control.TableCell<?, ?> cell, Vehicles v) {
+        // 先清理旧的 handler，避免重复绑定
+        cell.setOnContextMenuRequested(null);
+        cell.setContextMenu(null);
+
+        String defaultMsg = rowWarningMap.get(v);
+        if (defaultMsg == null || defaultMsg.isEmpty()) {
+            return; // 无告警不挂载
+        }
+
+        // 惰性创建：右键时取最新文案
+        cell.setOnContextMenuRequested(e -> {
+            String latest = rowWarningMap.get(v);
+            if (latest == null || latest.isEmpty()) return;
+            String finalMsg = warningMessageProvider.get(v, latest);
+
+            javafx.scene.control.ContextMenu menu = new javafx.scene.control.ContextMenu();
+            javafx.scene.control.MenuItem info = new javafx.scene.control.MenuItem(finalMsg);
+            info.setDisable(true); // 仅展示信息，不可点击
+            menu.getItems().add(info);
+            // 若未来需要更多操作项，可在此追加 menu item
+            menu.show(cell, e.getScreenX(), e.getScreenY());
+            e.consume();
+        });
+    }
+}

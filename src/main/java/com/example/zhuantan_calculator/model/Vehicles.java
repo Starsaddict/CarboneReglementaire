@@ -15,13 +15,13 @@ public abstract class Vehicles {
     private String carbonModel;   // 转碳车型
     private String carbonGroup;   // 转碳车组
 
-    private Integer sales;
+    private int sales;
 
-    public Integer getSales() {
+    public int getSales() {
         return sales;
     }
 
-    public void setSales(Integer sales) {
+    public void setSales(int sales) {
         this.sales = sales;
     }
 
@@ -130,7 +130,6 @@ public abstract class Vehicles {
         Double energy = getEnergy();
 
         Double result = coeff * energy;
-        System.out.println(this.getModel()+"的能耗是"+energy+"，转化系数是"+coeff+";油耗结果是"+result);
         return result;
     }
     public boolean isNewEnergy() {
@@ -143,17 +142,18 @@ public abstract class Vehicles {
         // 先取参与运算的值（都用包装类型，避免自动拆箱NPE）
         Double target = this.computeTarget(targetProvider, method);
         Double consumption = this.computeOilConsumption(convertionProvider, method);
-        Integer s = this.getSales();
 
-        // 只要有一个参数为null，整段返回null
-        if (target == null || consumption == null || s == null) {
+        if (target == null || consumption == null) {
             return null;
         }
 
-        // bonus通常是纯算法数，可保留为primitive
         double bonus = bonusProvider.calculateBonus(this);
 
-        return (target * bonus - consumption) * s;
+        return computeNetOilCredit(bonus, target, consumption);
+    }
+
+    public double computeNetOilCredit(double bonus, double target, double oilConsumption){
+        return (target - oilConsumption) * bonus * sales;
     }
 
     public Double computeNetCarbonCredit(CarbonFactorProvider provider, double netOilCredit){
