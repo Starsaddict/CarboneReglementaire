@@ -281,6 +281,7 @@ public class MainController {
         grossWeightCol.setOnEditCommit(evt -> {
             Vehicles v = evt.getRowValue();
             Integer newVal = evt.getNewValue();
+
             // 直接写回：NullSafeIntegerStringConverter 已保证空串 -> null
             v.setGrossWeight(newVal);
 
@@ -288,11 +289,10 @@ public class MainController {
             String warn = null;
             if (v instanceof HeavyVehicle) {
                 String gvw = ((HeavyVehicle) v).getGvwArea();
-                if (gvw != null && !gvw.isBlank()) {
-                    String msg = commercialTargetService.ifMatchGVMArea(v.getCarbonGroup(), v.getGrossWeight(), gvw);
-                    if (!"ok".equalsIgnoreCase(msg)) {
-                        warn = msg;
-                    }
+
+                String msg = commercialTargetService.ifMatchGVMArea(v.getCarbonGroup(), v.getGrossWeight(), gvw);
+                if (!"ok".equalsIgnoreCase(msg)) {
+                    warn = msg;
                 }
             } else if (v instanceof LightVehicle) {
                 warn = validateLightVehicle((LightVehicle) v);
@@ -464,17 +464,17 @@ public class MainController {
             for (Map<String, String> row : rawRows) {
                 try {
                     Vehicles v = VehicleFactory.createVehicleFromData(
-                            parseIntSafe(row.get("年份")),
-                            row.get("车辆生产企业"),
-                            row.get("车辆型号"),
-                            parseIntSafe(row.get("整备质量/kg")),
-                            parseIntSafe(row.get("总质量/kg")),
-                            parseDoubleSafe(row.get("测试质量/kg")),
-                            row.get("质量段"),
-                            parseDoubleSafe(row.get("能耗")),
-                            row.get("燃料种类"),
-                            row.get("转碳车组"),
-                            parseIntSafe(row.get("销量"))
+                            parseIntSafe(emptyToNull(row.get("年份"))),
+                            emptyToNull(row.get("车辆生产企业")),
+                            emptyToNull(row.get("车辆型号")),
+                            parseIntSafe(emptyToNull(row.get("整备质量/kg"))),
+                            parseIntSafe(emptyToNull(row.get("总质量/kg"))),
+                            parseDoubleSafe(emptyToNull(row.get("测试质量/kg"))),
+                            emptyToNull(row.get("质量段")),
+                            parseDoubleSafe(emptyToNull(row.get("能耗"))),
+                            emptyToNull(row.get("燃料种类")),
+                            emptyToNull(row.get("转碳车组")),
+                            parseIntSafe(emptyToNull(row.get("销量")))
                     );
                     vehiclesList.add(v);
                 } catch (Exception e) {
@@ -490,11 +490,23 @@ public class MainController {
         }
     }
     private Integer parseIntSafe(String value) {
+        if(value == null || value.equals("")) {
+            return null;
+        }
         try {
             return (int)Double.parseDouble(value);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * 将空字符串（或全空白）转为 null，非空返回去除首尾空格的字符串。
+     */
+    private String emptyToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @FXML
@@ -652,6 +664,9 @@ public class MainController {
     }
 
     private Double parseDoubleSafe(String value) {
+        if (value == null || value.isEmpty()) {
+            return null;
+        }
         try {
             return Double.parseDouble(value);
         } catch (Exception e) {
@@ -834,38 +849,25 @@ public class MainController {
         // Add OnEditCommit handler to update HeavyVehicle and refresh table, show Tooltip for warnings (multiple tooltips supported)
         gvwAreaCol.setOnEditCommit(event -> {
             Vehicles v = event.getRowValue();
-            boolean hasWarning = false;
-            StringBuilder messageBuilder = new StringBuilder();
             if (v instanceof HeavyVehicle) {
                 String newVal = event.getNewValue();
                 String carbonGroup = v.getCarbonGroup();
 
-                // 支持清空质量段：当选择或输入为空时，直接置空并清除告警
+                // 允许置空，但不短路：统一交给 service 判断（包括“总质量与质量段不能同时为空”等）
                 if (newVal == null || newVal.isBlank()) {
                     ((HeavyVehicle) v).setGvwArea(null);
-                    rowWarningMap.remove(v);
-                    vehicleTable.refresh();
-                    hideGvwWarning(v);
-                    return;
+                } else {
+                    ((HeavyVehicle) v).setGvwArea(newVal);
                 }
 
-                // 让 service 层决定校验结论：返回 "ok" 代表通过，否则返回具体错误信息
-                String returnMessage = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), newVal);
+                // 始终调用 service，让其返回权威结论
+                String returnMessage = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), ((HeavyVehicle) v).getGvwArea());
+
                 if (!"ok".equalsIgnoreCase(returnMessage)) {
-                    hasWarning = true;
-                    messageBuilder.append(returnMessage);
-                }
-                // 先写回模型，再刷新；避免刷新使得旧的 cell 引用失效
-                ((HeavyVehicle) v).setGvwArea(newVal);
-                if (hasWarning) {
-                    rowWarningMap.put(v, messageBuilder.toString());
+                    rowWarningMap.put(v, returnMessage);
+                    showGvwWarning(v, returnMessage);
                 } else {
                     rowWarningMap.remove(v);
-                }
-
-                if (hasWarning) {
-                    showGvwWarning(v, messageBuilder.toString());
-                } else {
                     hideGvwWarning(v);
                 }
                 vehicleTable.refresh();
@@ -895,27 +897,18 @@ public class MainController {
         for (Vehicles v : vehiclesList) {
             if (v instanceof HeavyVehicle) {
                 String gvw = ((HeavyVehicle) v).getGvwArea();
-
-                // 情况一：质量段为空/空白 —— 视为清理告警
-                if (gvw == null || gvw.isBlank()) {
-                    if (rowWarningMap.remove(v) != null) {
-                        changed.add(v);
-                    }
-                    continue; // 下一辆
-                }
-
-                // 情况二：有质量段，走 service 校验
                 String carbonGroup = v.getCarbonGroup();
+
                 String msg = commercialTargetService.ifMatchGVMArea(carbonGroup, v.getGrossWeight(), gvw);
 
                 if (!"ok".equalsIgnoreCase(msg)) {
                     String prev = rowWarningMap.put(v, msg);
                     if (!Objects.equals(prev, msg)) {
-                        changed.add(v); // 新增或信息变化
+                        changed.add(v);
                     }
                 } else {
                     if (rowWarningMap.remove(v) != null) {
-                        changed.add(v); // 原本有告警，现在通过
+                        changed.add(v);
                     }
                 }
             }
