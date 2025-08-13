@@ -19,6 +19,7 @@ import javafx.collections.FXCollections;
 import java.util.List;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import javafx.scene.control.cell.PropertyValueFactory;
 
 public class ThresholdController {
     @FXML private ChoiceBox<String> choiceBox;
@@ -61,6 +62,12 @@ public class ThresholdController {
         factor.setItems(FXCollections.observableArrayList(carbonFactorService.getAllCarbonFactor()));
         conversion.setItems(FXCollections.observableArrayList(energyConversionService.getAllEnergyConversion()));
         threshold.setItems(FXCollections.observableArrayList(newEnergyThresoldService.getAllEnergyThreshold()));
+
+        // 自动按模型生成列，避免在 FXML 里写死
+        autoColumns(target, CommercialTarget.class);
+        autoColumns(factor, CarbonFactor.class);
+        autoColumns(conversion, EnergyConversion.class);
+        autoColumns(threshold, NewEnergyThreshold.class);
     }
 
     private void showTable(String name) {
@@ -81,6 +88,18 @@ public class ThresholdController {
         Parent root = loader.load();
         Scene scene = ((javafx.scene.Node) event.getSource()).getScene();
         scene.setRoot(root);
+    }
+
+    // 通用：根据模型类字段自动创建列（不在FXML里写死）
+    private static <T> void autoColumns(TableView<T> table, Class<T> modelClass) {
+        table.getColumns().clear();
+        for (var f : modelClass.getDeclaredFields()) {
+
+            TableColumn<T, Object> col = new TableColumn<>(f.getName());
+            col.setCellValueFactory(new PropertyValueFactory<>(f.getName())); // 依赖标准 getter: getXxx()/isXxx()
+            col.setPrefWidth(140);
+            table.getColumns().add(col);
+        }
     }
 
 
