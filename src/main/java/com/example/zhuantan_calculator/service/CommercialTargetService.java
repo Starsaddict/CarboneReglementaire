@@ -1,5 +1,6 @@
 package com.example.zhuantan_calculator.service;
 
+import com.example.zhuantan_calculator.model.CommercialTarget;
 import com.example.zhuantan_calculator.repository.CommercialTargetRepo;
 import jakarta.persistence.EntityManager;
 
@@ -65,5 +66,10 @@ public class CommercialTargetService {
 
         return "ok";
 
+    }
+
+    public List<CommercialTarget> getAllCommercialTarget(){
+        CommercialTargetRepo carbonTargetRepo = new CommercialTargetRepo(entityManager);
+        return carbonTargetRepo.findAll();
     }
 }

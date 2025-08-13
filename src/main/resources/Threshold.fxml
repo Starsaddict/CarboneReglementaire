@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17.0.12" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.zhuantan_calculator.controller.ThresholdController">
+    <top>
+        <HBox spacing="10">
+            <padding>
+                <Insets bottom="10" left="10" right="10" top="10" />
+            </padding>
+            <Button onAction="#goBack" text="返回计算器" />
+            <ChoiceBox fx:id="choiceBox" prefWidth="150.0" />
+
+        </HBox>
+    </top>
+    <center>
+        <StackPane>
+            <TableView fx:id="target">
+
+            </TableView>
+            <TableView fx:id="conversion">
+
+            </TableView>
+            <TableView fx:id="factor">
+
+            </TableView>
+            <TableView fx:id="threshold">
+
+            </TableView>
+        </StackPane>
+    </center>
+</BorderPane>

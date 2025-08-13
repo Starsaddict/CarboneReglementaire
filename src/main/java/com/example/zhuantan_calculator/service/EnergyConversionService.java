@@ -1,9 +1,12 @@
 package com.example.zhuantan_calculator.service;
 
+import com.example.zhuantan_calculator.model.EnergyConversion;
 import com.example.zhuantan_calculator.repository.EnergyConversionRepo;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
+
+import java.util.List;
 
 public class EnergyConversionService {
     private final EntityManager entityManager;
@@ -40,6 +43,11 @@ public class EnergyConversionService {
             return energyConversionRepo.findDieselCoeff(energyType);
         }
         return null ;
+    }
+
+    public List<EnergyConversion> getAllEnergyConversion(){
+        EnergyConversionRepo energyConversionRepo = new EnergyConversionRepo(entityManager);
+        return energyConversionRepo.findAall();
     }
 
     public static void main(String[] args) {

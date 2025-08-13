@@ -18,7 +18,6 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.FileChooser;
 import javafx.scene.control.ComboBox;
-import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.Tooltip;
@@ -1363,7 +1362,7 @@ public class MainController {
 
     @FXML
     private void handleTreshold(ActionEvent event) throws java.io.IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("/Threshold_target.fxml"));
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/Threshold.fxml"));
         Parent root = loader.load();
         Scene scene = ((javafx.scene.Node) event.getSource()).getScene();
         scene.setRoot(root);
