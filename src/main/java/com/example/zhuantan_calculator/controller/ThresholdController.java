@@ -20,6 +20,11 @@ import java.util.List;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.util.converter.IntegerStringConverter;
+import javafx.util.converter.DoubleStringConverter;
+import javafx.scene.control.cell.TextFieldTableCell;
+import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 
 public class ThresholdController {
     @FXML private ChoiceBox<String> choiceBox;
@@ -76,10 +81,14 @@ public class ThresholdController {
         boolean showConversion = "EnergyConversion".equals(name);
         boolean showThreshold  = "NewEnergyThreshold".equals(name);
 
-        target.setVisible(showTarget);       target.setManaged(showTarget);
-        factor.setVisible(showFactor);       factor.setManaged(showFactor);
-        conversion.setVisible(showConversion); conversion.setManaged(showConversion);
-        threshold.setVisible(showThreshold);  threshold.setManaged(showThreshold);
+        target.setVisible(showTarget);
+        target.setManaged(showTarget);
+        factor.setVisible(showFactor);
+        factor.setManaged(showFactor);
+        conversion.setVisible(showConversion);
+        conversion.setManaged(showConversion);
+        threshold.setVisible(showThreshold);
+        threshold.setManaged(showThreshold);
     }
 
     @FXML
@@ -90,15 +99,111 @@ public class ThresholdController {
         scene.setRoot(root);
     }
 
-    // 通用：根据模型类字段自动创建列（不在FXML里写死）
-    private static <T> void autoColumns(TableView<T> table, Class<T> modelClass) {
+    private <T> void autoColumns(TableView<T> table, Class<T> modelClass) {
+        table.setEditable(true);
         table.getColumns().clear();
-        for (var f : modelClass.getDeclaredFields()) {
+        for (Field f : modelClass.getDeclaredFields()) {
+            String fieldName = f.getName();
+            if ("id".equalsIgnoreCase(fieldName)) continue; // 不显示/不编辑 id
 
-            TableColumn<T, Object> col = new TableColumn<>(f.getName());
-            col.setCellValueFactory(new PropertyValueFactory<>(f.getName())); // 依赖标准 getter: getXxx()/isXxx()
+            TableColumn<T, Object> col = new TableColumn<>(fieldName);
             col.setPrefWidth(140);
+            col.setCellValueFactory(new PropertyValueFactory<>(fieldName));
+
+            Class<?> type = f.getType();
+            // 根据字段类型选择可编辑单元格
+            if (type == String.class) {
+                @SuppressWarnings("unchecked")
+                TableColumn<T, String> stringCol = (TableColumn<T, String>) (TableColumn<?, ?>) col;
+                stringCol.setCellFactory(TextFieldTableCell.forTableColumn());
+                stringCol.setOnEditCommit(ev -> {
+                    T row = ev.getRowValue();
+                    String newVal = ev.getNewValue();
+                    setPropertyViaSetter(row, fieldName, newVal);
+                    persistRow(row);
+                    table.refresh();
+                });
+            } else if (type == Integer.class || type == int.class) {
+                @SuppressWarnings("unchecked")
+                TableColumn<T, Integer> intCol = (TableColumn<T, Integer>) (TableColumn<?, ?>) col;
+                intCol.setCellFactory(TextFieldTableCell.forTableColumn(new IntegerStringConverter()));
+                intCol.setOnEditCommit(ev -> {
+                    T row = ev.getRowValue();
+                    Integer newVal = ev.getNewValue();
+                    setPropertyViaSetter(row, fieldName, newVal);
+                    persistRow(row);
+                    table.refresh();
+                });
+            } else if (type == Double.class || type == double.class) {
+                @SuppressWarnings("unchecked")
+                TableColumn<T, Double> dblCol = (TableColumn<T, Double>) (TableColumn<?, ?>) col;
+                dblCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+                dblCol.setOnEditCommit(ev -> {
+                    T row = ev.getRowValue();
+                    Double newVal = ev.getNewValue();
+                    setPropertyViaSetter(row, fieldName, newVal);
+                    persistRow(row);
+                    table.refresh();
+                });
+            } else if (type == Boolean.class || type == boolean.class) {
+                // 布尔类型先保持只读；如需编辑可改为 CheckBoxTableCell，并在commit时persist
+                col.setEditable(false);
+            } else {
+                // 其他类型默认只读
+                col.setEditable(false);
+            }
+
             table.getColumns().add(col);
+        }
+    }
+
+    private <T> void persistRow(T row) {
+        try {
+            if (em != null) {
+                em.getTransaction().begin();
+                em.merge(row);
+                em.getTransaction().commit();
+            }
+        } catch (Exception ex) {
+            if (em != null && em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            // 这里不抛出，让UI不中断；你也可以改为弹窗提示
+            ex.printStackTrace();
+        }
+    }
+
+    private static void setPropertyViaSetter(Object target, String fieldName, Object value) {
+        String setter = "set" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+        Method m = null;
+        try {
+            // 先按参数实际类型精确匹配
+            if (value != null) {
+                try {
+                    m = target.getClass().getMethod(setter, value.getClass());
+                } catch (NoSuchMethodException ignore) {
+                    // 尝试用装箱/拆箱后的常见类型匹配
+                    Class<?> alt = value instanceof Integer ? int.class : value instanceof Double ? double.class : value instanceof Boolean ? boolean.class : value.getClass();
+                    try {
+                        m = target.getClass().getMethod(setter, alt);
+                    } catch (NoSuchMethodException ignored) { }
+                }
+            }
+            if (m == null) {
+                // 回退：按字段声明类型找setter
+                Field f = target.getClass().getDeclaredField(fieldName);
+                m = target.getClass().getMethod(setter, f.getType());
+            }
+            m.invoke(target, value);
+        } catch (Exception e) {
+            // 最后回退：直设字段（需要可访问）
+            try {
+                Field f = target.getClass().getDeclaredField(fieldName);
+                f.setAccessible(true);
+                f.set(target, value);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
