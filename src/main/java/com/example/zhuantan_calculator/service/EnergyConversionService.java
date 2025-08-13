@@ -16,24 +16,27 @@ public class EnergyConversionService {
     // 这里对于energyType为天然气的车：要提前把energyType改为天然气-LNG或者天然气-CNG
     public Double computeConversionCoeff(String energyType, String carbonEnergyType, int method){
         EnergyConversionRepo energyConversionRepo = new EnergyConversionRepo(entityManager);
-        if(energyType.equals("BEV") && method == 0) {
+        if("汽油".equals(energyType) || "柴油".equals(energyType)){
+            return 1.0;
+        }
+        if(("BEV".equals(energyType) || "电".equals(energyType)) && method == 0) {
             return 0.0;
-        }else if(energyType.equals("BEV") && method == 1) {
-            if(carbonEnergyType.equals("汽油")){
+        }else if(("BEV".equals(energyType) || "电".equals(energyType)) && method == 1) {
+            if("汽油".equals(carbonEnergyType)){
                 return energyConversionRepo.findGasCoeff("BEV_method1");
-            }else if(carbonEnergyType.equals("柴油")){
+            }else if("柴油".equals(carbonEnergyType)){
                 return energyConversionRepo.findDieselCoeff("BEV_method1");
             }
-        }else if(energyType.equals("BEV") & method == 3) {
-            if(carbonEnergyType.equals("汽油")){
+        }else if(("BEV".equals(energyType) || "电".equals(energyType)) & method == 3) {
+            if("汽油".equals(carbonEnergyType)){
                 return energyConversionRepo.findGasCoeff("BEV_method3");
-            }else if(carbonEnergyType.equals("柴油")){
+            }else if("柴油".equals(carbonEnergyType)){
                 return energyConversionRepo.findDieselCoeff("BEV_method3");
             }
         }
-        else if(carbonEnergyType.equals("汽油")){
+        else if("汽油".equals(carbonEnergyType)){
             return energyConversionRepo.findGasCoeff(energyType);
-        } else if (carbonEnergyType.equals("柴油")) {
+        } else if ("柴油".equals(carbonEnergyType)) {
             return energyConversionRepo.findDieselCoeff(energyType);
         }
         return null ;
@@ -43,7 +46,7 @@ public class EnergyConversionService {
         EntityManagerFactory emf = Persistence.createEntityManagerFactory("zhuantanPU");
         EntityManager em = emf.createEntityManager();
         EnergyConversionService energyConversionService = new EnergyConversionService(em);
-        Double result = energyConversionService.computeConversionCoeff("汽油", "柴油", 0);
+        Double result = energyConversionService.computeConversionCoeff("柴油", "柴油", 1);
         System.out.println(result);
     }
 

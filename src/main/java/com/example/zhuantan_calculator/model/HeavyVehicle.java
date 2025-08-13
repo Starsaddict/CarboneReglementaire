@@ -9,6 +9,19 @@ public class HeavyVehicle extends Vehicles{
     public HeavyVehicle() { }
 
     @Override
+    public String computeCarbonFuelType() {
+        if("汽油".equals(getFuelType())){
+            return "汽油";
+        }
+        if("PHEV".equals(getFuelType())){
+            if("汽油".equals(getPhevfuel1()) || "汽油".equals(getPhevfuel2())){
+                return "汽油";
+            }
+        }
+        return "柴油";
+    }
+
+    @Override
     public Double doComputeTarget(TargetProvider targetProvider, int method) {
         return targetProvider.getTarget(this,method);
     }

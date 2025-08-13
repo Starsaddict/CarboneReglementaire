@@ -11,10 +11,22 @@ public class LightVehicle extends Vehicles{
     public LightVehicle(){}
 
     @Override
+    public String computeCarbonFuelType() {
+        if("柴油".equals(getFuelType())){
+            return "柴油";
+        }
+        if("PHEV".equals(getFuelType())){
+            if("柴油".equals(getPhevfuel1()) || "柴油".equals(getPhevfuel2())){
+                return "柴油";
+            }
+        }
+        return "汽油";
+    }
+
+    @Override
     protected Double doComputeTarget(TargetProvider provider, int method) {
         return getTarget();
     }
-
 
 
     private Double getTarget() {

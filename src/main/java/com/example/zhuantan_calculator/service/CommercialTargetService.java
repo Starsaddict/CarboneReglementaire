@@ -46,7 +46,7 @@ public class CommercialTargetService {
 //        System.out.println("grossWeight:"+ grossWeight+ "gvwArea:"+gvwArea);
 
         if((grossWeight == null || grossWeight.equals(0)) && gvwArea == null)
-            return "质量段和总质量不能同时为空"; //TODO:这里还有bug，同时都是空的时候不能报错
+            return "质量段和总质量不能同时为空";
 
 
         String carbonModel = ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) ? "货车" : carbonGroup;

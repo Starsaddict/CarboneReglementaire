@@ -51,23 +51,32 @@ public class MainController {
     @FXML private TableColumn<Vehicles, String> enterpriseCol;
     @FXML private TableColumn<Vehicles, String> modelCol;
     @FXML private TableColumn<Vehicles, String> fuelTypeCol;
+    @FXML private TableColumn<Vehicles, Double> energyCol;
+    @FXML private TableColumn<Vehicles, String> carbonFuelTypeCol;
+
+    @FXML private TableColumn<Vehicles, String> PHEVFuel1Col;
+    @FXML private TableColumn<Vehicles, String> PHEVFuel2Col;
+    @FXML private TableColumn<Vehicles, Double> PHEVFuel1EnergyCol;
+    @FXML private TableColumn<Vehicles, Double> PHEVFuel2EnergyCol;
     @FXML private TableColumn<Vehicles, Integer> curbWeightCol;
     @FXML private TableColumn<Vehicles, Integer> grossWeightCol;
     @FXML private TableColumn<Vehicles, Double> testMassCol;
     @FXML private TableColumn<Vehicles, String> gvwAreaCol;
-    @FXML private TableColumn<Vehicles, Double> energyCol;
+
     @FXML private TableColumn<Vehicles, Integer> salesCol;
     @FXML private TableColumn<Vehicles, String> carbonGroupCol;
 
-    @FXML private TableColumn<Vehicles, String> energyConsumptionMethod0Col;
-    @FXML private TableColumn<Vehicles, String> energyConsumptionMethod1Col;
-    @FXML private TableColumn<Vehicles, String> energyConsumptionMethod3Col;
+    @FXML private TableColumn<Vehicles, Double> energyConsumptionMethod0Col;
+    @FXML private TableColumn<Vehicles, Double> energyConsumptionMethod1Col;
+    @FXML private TableColumn<Vehicles, Double> energyConsumptionMethod3Col;
 
-    @FXML private TableColumn<Vehicles, String> target0Col;
-    @FXML private TableColumn<Vehicles, String> target1Col;
-    @FXML private TableColumn<Vehicles, String> target3Col;
+    @FXML private TableColumn<Vehicles, Double> target0Col;
+    @FXML private TableColumn<Vehicles, Double> target1Col;
+    @FXML private TableColumn<Vehicles, Double> target3Col;
 
-    @FXML private TableColumn<Vehicles, String> bonusCol;
+    @FXML private TableColumn<Vehicles, Double> penetrationRateCol;
+
+    @FXML private TableColumn<Vehicles, Double> bonusCol;
 
     @FXML private TableColumn<Vehicles, Double> netOilCreditMethod0Col;
     @FXML private TableColumn<Vehicles, Double> netOilCreditMethod1Col;
@@ -75,12 +84,14 @@ public class MainController {
     @FXML private TableColumn<Vehicles, Double> netCarbonCreditMethod0Col;
     @FXML private TableColumn<Vehicles, Double> netCarbonCreditMethod1Col;
     @FXML private TableColumn<Vehicles, Double> netCarbonCreditMethod3Col;
+
+
     private final ObservableList<Vehicles> vehicles = FXCollections.observableArrayList();
     private final List<Vehicles> vehiclesList = new ArrayList<>();
     // Map to track warning message for each row (vehicle)
-    private final java.util.Map<Vehicles, String> rowWarningMap = new java.util.HashMap<>();
+    private final java.util.Map<Vehicles, String> rowWarningMap = new HashMap<>();
     // Anchor map for GVW area cells to show PopOver at the exact cell
-    private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new java.util.HashMap<>();
+    private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new HashMap<>();
     // Anchor map for LightVehicle testMass cells to show Tooltip at the testMass cell
     private final Map<Vehicles, TableCell<Vehicles, Double>> testMassCellMap = new HashMap<>();
     // Guard to prevent double commit when both onAction and focus listeners fire
@@ -387,7 +398,22 @@ public class MainController {
                     return null;
                 }
         );
+
+        // 让“年份”可编辑（所有车辆）
+        yearCol.setEditable(true);
+        setupYearComboCell();
+
         energyCol.setCellValueFactory(new PropertyValueFactory<>("energy"));
+        PHEVFuel1Col.setCellValueFactory(cd ->
+                new ReadOnlyObjectWrapper<>(cd.getValue().getPhevfuel1()));
+        PHEVFuel2Col.setCellValueFactory(cd ->
+                new ReadOnlyObjectWrapper<>(cd.getValue().getPhevfuel2()));
+
+        PHEVFuel1EnergyCol.setCellValueFactory(cd ->
+                new ReadOnlyObjectWrapper<>(cd.getValue().getPhevfuel1Energy()));
+        PHEVFuel2EnergyCol.setCellValueFactory(cd ->
+                new ReadOnlyObjectWrapper<>(cd.getValue().getPhevfuel2Energy()));
+
         salesCol.setCellValueFactory(new PropertyValueFactory<>("sales"));
         carbonGroupCol.setCellValueFactory(new PropertyValueFactory<>("carbonGroup"));
 
@@ -413,21 +439,35 @@ public class MainController {
         carbonFactorProvider = v -> carbonFactorService.getCarbonFactor(v.computeCarbonFuelType());
         convertionProvider = (v, method) -> {
             String fuelType = v.getFuelType();
-            if ("天然气".equals(fuelType)) {
-                if (v.getCarbonGroup().equals("牵引车") || v.getCarbonGroup().equals("中重型载货") || v.getCarbonGroup().equals("自卸车")) {
-                    fuelType = "天然气-LNG";
-                } else {
-                    fuelType = "天然气-CNG";
+            if (!"PHEV".equals(fuelType)) {
+                if ("天然气".equals(fuelType)) {
+                    if (v.getCarbonGroup().equals("牵引车") || v.getCarbonGroup().equals("中重型载货") || v.getCarbonGroup().equals("自卸车")) {
+                        fuelType = "天然气-LNG";
+                    } else {
+                        fuelType = "天然气-CNG";
+                    }
                 }
+
+                Double coeff = energyConversionService.computeConversionCoeff(fuelType, v.computeCarbonFuelType(), method);
+                if ("汽油".equals(fuelType) || "柴油".equals(fuelType)) {
+                    coeff = 1.0;
+                }
+                return coeff * v.getEnergy();
+            }else{
+                Map<String, Double> fuelTypeEnergyMap =  v.getFuelTypeEnergyMap();
+                double consumption = 0.0;
+                for (Map.Entry<String, Double> entry : fuelTypeEnergyMap.entrySet()) {
+                    String subFuelType = entry.getKey();   // 子燃料类型，比如“汽油”“电”
+                    Double subEnergy = entry.getValue();  // 子燃料能耗
+                    double coeff = energyConversionService.computeConversionCoeff(subFuelType,v.computeCarbonFuelType(), method);
+                    double subConsumption = coeff * subEnergy;
+                    consumption += subConsumption;
+                }
+                return consumption;
             }
 
-            Double coeff = energyConversionService.computeConversionCoeff(fuelType, v.computeCarbonFuelType(), method);
-            if ("汽油".equals(fuelType) || "柴油".equals(fuelType)) {
-                coeff = 1.0;
-            }
-
-            return coeff;
         };
+
         newEnergyThresholdProvider = v -> {
             Double threshold = newEnergyThresoldService.computeNewEnergyThreshold(v.getYear(), v.getCarbonGroup());
             double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
@@ -474,7 +514,11 @@ public class MainController {
                             parseDoubleSafe(emptyToNull(row.get("能耗"))),
                             emptyToNull(row.get("燃料种类")),
                             emptyToNull(row.get("转碳车组")),
-                            parseIntSafe(emptyToNull(row.get("销量")))
+                            parseIntSafe(emptyToNull(row.get("销量"))),
+                            emptyToNull(row.get("PHEV燃料1")),
+                            parseDoubleSafe(emptyToNull(row.get("PHEV燃料1能耗"))),
+                            emptyToNull(row.get("PHEV燃料2")),
+                            parseDoubleSafe(emptyToNull(row.get("PHEV燃料2能耗")))
                     );
                     vehiclesList.add(v);
                 } catch (Exception e) {
@@ -563,6 +607,9 @@ public class MainController {
 
     @FXML
     private void calculateCredit() {
+        // 计算转碳能源类型
+        Map<Vehicles, String> carbonFuelTypeMap = new HashMap<>();
+
         // 计算净油耗
         Map<Vehicles, Double> consumption0Map = new HashMap<>();
         Map<Vehicles, Double> consumption1Map = new HashMap<>();
@@ -574,6 +621,7 @@ public class MainController {
         Map<Vehicles, Double> target3Map = new HashMap<>();
 
         //计算新能源调节系数
+        Map<Vehicles, Double> penetrationMap = new HashMap<>();
         Map<Vehicles, Double> bonusMap = new HashMap<>();
 
         // 计算净油积分（方法0/1/3）
@@ -585,6 +633,9 @@ public class MainController {
         Map<Vehicles, Double> carbonCredit1Map = new HashMap<>();
         Map<Vehicles, Double> carbonCredit3Map = new HashMap<>();
         for (Vehicles v : vehiclesList) {
+            String carbonEnergy = v.computeCarbonFuelType();
+            carbonFuelTypeMap.put(v, carbonEnergy);
+
             double consumption0 = v.computeOilConsumption(convertionProvider,0);
             double consumption1 = v.computeOilConsumption(convertionProvider,1);
             double consumption3 = v.computeOilConsumption(convertionProvider,3);
@@ -592,6 +643,8 @@ public class MainController {
             double target0 = v.computeTarget(targetProvider,0);
             double target1 = v.computeTarget(targetProvider,1);
             double target3 = v.computeTarget(targetProvider,3);
+
+            double penetrationRate = vehicleService.computePenetrationRate(vehiclesList, v);
 
             double bonus = bonusProvider.calculateBonus(v);
 
@@ -618,27 +671,33 @@ public class MainController {
             target1Map.put(v, target1);
             target3Map.put(v, target3);
 
+            penetrationMap.put(v,penetrationRate);
+            System.out.println("penetration rate : " + penetrationRate);
             bonusMap.put(v, bonus);
 
         }
         // 取数
+        carbonFuelTypeCol.setCellValueFactory(cellData ->
+                new ReadOnlyObjectWrapper<>(carbonFuelTypeMap.get(cellData.getValue())));
         energyConsumptionMethod0Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(consumption0Map.get(cellData.getValue())).asString()
+                new ReadOnlyObjectWrapper<>(consumption0Map.get(cellData.getValue()))
         );
         energyConsumptionMethod1Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(consumption1Map.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(consumption1Map.get(cellData.getValue())));
         energyConsumptionMethod3Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(consumption3Map.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(consumption3Map.get(cellData.getValue())));
 
         target0Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(target0Map.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(target0Map.get(cellData.getValue())));
         target1Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(target1Map.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(target1Map.get(cellData.getValue())));
         target3Col.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(target3Map.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(target3Map.get(cellData.getValue())));
 
+        penetrationRateCol.setCellValueFactory(cellData ->
+                new ReadOnlyObjectWrapper<>(penetrationMap.get(cellData.getValue())));
         bonusCol.setCellValueFactory(cellData ->
-                new ReadOnlyObjectWrapper<>(bonusMap.get(cellData.getValue())).asString());
+                new ReadOnlyObjectWrapper<>(bonusMap.get(cellData.getValue())));
 
         netOilCreditMethod0Col.setCellValueFactory(cellData ->
             new ReadOnlyObjectWrapper<>(credit0Map.get(cellData.getValue()))
@@ -873,6 +932,110 @@ public class MainController {
                 vehicleTable.refresh();
             }
         });
+    }
+
+    private void setupYearComboCell(){
+        // 允许的年份集合
+        final List<Integer> allowedYears = Arrays.asList(2028, 2029, 2030);
+
+        // 使用自定义 TableCell + ComboBox 实现，仅允许选择 3 个年份
+        yearCol.setCellFactory(col -> new TableCell<Vehicles, Integer>() {
+            private ComboBox<Integer> combo;
+
+            private void createCombo(Integer current) {
+                combo = new ComboBox<>();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setEditable(false); // 只允许下拉选择
+                combo.getItems().setAll(allowedYears);
+                combo.getSelectionModel().select(current);
+                combo.setOnAction(e -> {
+                    Integer sel = combo.getSelectionModel().getSelectedItem();
+                    commitEdit(sel);
+                });
+                combo.focusedProperty().addListener((obs, oldV, newV) -> {
+                    if (!newV) {
+                        Integer sel = combo.getSelectionModel().getSelectedItem();
+                        if (!Objects.equals(sel, getItem())) {
+                            commitEdit(sel);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void startEdit() {
+                super.startEdit();
+                Vehicles v = getTableView().getItems().get(getIndex());
+                createCombo(getItem());
+                setText(null);
+                setGraphic(combo);
+                combo.requestFocus();
+                combo.show();
+                // 针对年份列也应用错误样式/提示（复用已有机制）
+                applyErrorStyle(v, this);
+            }
+
+            @Override
+            public void cancelEdit() {
+                super.cancelEdit();
+                setText(getItem() == null ? "" : String.valueOf(getItem()));
+                setGraphic(null);
+            }
+
+            @Override
+            protected void updateItem(Integer value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
+                    return;
+                }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) {
+                    createCombo(value);
+                    setText(null);
+                    setGraphic(combo);
+                    applyErrorStyle(v, this);
+                } else {
+                    setText(value == null ? "" : String.valueOf(value));
+                    setGraphic(null);
+                    applyErrorStyle(v, this);
+                }
+            }
+        });
+
+        // 统一的提交与校验逻辑：只能是 2028/2029/2030
+        yearCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Integer newYear = evt.getNewValue();
+            // 写回 model
+            v.setYear(newYear);
+
+            String warn = null;
+            if (newYear == null || !allowedYears.contains(newYear)) {
+                warn = "年份不合法：只允许 2028 / 2029 / 2030";
+            }
+
+            if (warn != null) {
+                rowWarningMap.put(v, warn);
+            } else {
+                // 仅在当前是年份相关报错时移除，避免覆盖其它类型告警
+                String prev = rowWarningMap.get(v);
+                if (prev != null && prev.startsWith("年份不合法")) {
+                    rowWarningMap.remove(v);
+                }
+            }
+
+            // 刷新以触发样式与提示
+            vehicleTable.refresh();
+        });
+
+        // 更易点中编辑，适度加宽
+        yearCol.setPrefWidth(90);
     }
 
     private void showGvwWarning(Vehicles v, String msg) {

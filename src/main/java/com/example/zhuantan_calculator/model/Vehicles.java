@@ -1,119 +1,86 @@
 package com.example.zhuantan_calculator.model;
 
 import com.example.zhuantan_calculator.functionalInterface.*;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Map;
 
 public abstract class Vehicles {
 
+    @Getter
+    @Setter
     private int year;
+    @Getter
+    @Setter
     private String enterprise;
+    @Getter
+    @Setter
     private String model;
+    @Getter
+    @Setter
     private String fuelType;
+
+    @Getter
+    @Setter
     private Double energy;
+
+    @Getter
+    @Setter
+    private Map<String, Double> fuelTypeEnergyMap;
+
+    public String getPhevfuel1()        { return getFuelKeyByIndex(0); }
+    public Double getPhevfuel1Energy()  { return getFuelEnergyByIndex(0); }
+    public String getPhevfuel2()        { return getFuelKeyByIndex(1); }
+    public Double getPhevfuel2Energy()  { return getFuelEnergyByIndex(1); }
+
+    private String getFuelKeyByIndex(int idx) {
+        Map.Entry<String, Double> e = getNthEntry(idx);
+        return e == null ? null : e.getKey();
+    }
+    private Double getFuelEnergyByIndex(int idx) {
+        Map.Entry<String, Double> e = getNthEntry(idx);
+        return e == null ? null : e.getValue();
+    }
+
+    /** 仅当 fuelType 为 PHEV 时，从 map 里安全地取第 N 项；不足则返回 null */
+    private Map.Entry<String, Double> getNthEntry(int n) {
+        if (!"PHEV".equals(getFuelType())) return null;
+        Map<String, Double> m = getFuelTypeEnergyMap();
+        if (m == null || m.isEmpty()) return null;
+
+        int i = 0;
+        for (Map.Entry<String, Double> e : m.entrySet()) {
+            if (i++ == n) return e;
+        }
+        return null;
+    }
+
+    @Getter
+    @Setter
     private Integer grossWeight;
 
+    @Getter
+    @Setter
     private Integer method;
+
+    @Getter
+    @Setter
     private String carbonModel;   // 转碳车型
+
+    @Getter
+    @Setter
     private String carbonGroup;   // 转碳车组
 
+    @Getter
+    @Setter
     private int sales;
-
-    public int getSales() {
-        return sales;
-    }
-
-    public void setSales(int sales) {
-        this.sales = sales;
-    }
 
     public Vehicles() {
     }
 
 
-    public int getYear() {
-        return year;
-    }
-
-    public void setYear(int year) {
-        this.year = year;
-    }
-
-    public String getEnterprise() {
-        return enterprise;
-    }
-
-    public void setEnterprise(String enterprise) {
-        this.enterprise = enterprise;
-    }
-
-    public String getModel() {
-        return model;
-    }
-
-    public void setModel(String model) {
-        this.model = model;
-    }
-
-    public String getFuelType() {
-        return fuelType;
-    }
-
-    public void setFuelType(String fuelType) {
-        this.fuelType = fuelType;
-    }
-
-    public Double getEnergy() {
-        return energy;
-    }
-
-    public void setEnergy(Double energy) {
-        this.energy = energy;
-    }
-
-    public Integer getGrossWeight() {
-        return grossWeight;
-    }
-
-    public void setGrossWeight(Integer grossWeight) {
-        this.grossWeight = grossWeight;
-    }
-
-    public Integer getMethod() {
-        return method;
-    }
-
-    public void setMethod(Integer method) {
-        this.method = method;
-    }
-
-    public String getCarbonModel() {
-        return carbonModel;
-    }
-
-    public void setCarbonModel(String carbonModel) {
-        this.carbonModel = carbonModel;
-    }
-
-    public String getCarbonGroup() {
-        return carbonGroup;
-    }
-
-    public void setCarbonGroup(String carbonGroup) {
-        this.carbonGroup = carbonGroup;
-    }
-
-    public String computeCarbonFuelType() {
-        if ("N1".equals(this.carbonGroup) || "M2".equals(this.carbonGroup)) {
-            if ("柴油".equals(this.fuelType)) {
-                return "柴油";
-            }
-            return "汽油";
-        } else {
-            if ("汽油".equals(this.fuelType)) {
-                return "汽油";
-            }
-            return "柴油";
-        }
-    }
+    public abstract String computeCarbonFuelType();
 
     public final Double computeTarget(TargetProvider provider, int method) {
         return doComputeTarget(provider, method);
@@ -122,19 +89,15 @@ public abstract class Vehicles {
     protected abstract Double doComputeTarget(TargetProvider provider, int method);
 
     public final Double computeOilConsumption(ConvertionProvider provider, int method) {
-        return doComputeOilConsumption(provider, method);
+
+        return provider.getConvertCoeff(this, method);
+
     }
 
-    public Double doComputeOilConsumption(ConvertionProvider provider, int method) {
-        Double coeff = provider.getConvertCoeff(this, method);
-        Double energy = getEnergy();
-
-        Double result = coeff * energy;
-        return result;
-    }
     public boolean isNewEnergy() {
-        return "BEV".equals(fuelType) || "FCV".equals(fuelType) || "PHEV".equals(fuelType);
+        return "BEV".equals(fuelType) || "FCV".equals(fuelType) || "PHEV".equals(fuelType)  || "PHEV-甲醇".equals(fuelType);
     }
+
     public Double computeNetOilCredit(BonusProvider bonusProvider,
                                       TargetProvider targetProvider,
                                       ConvertionProvider convertionProvider,
@@ -153,7 +116,7 @@ public abstract class Vehicles {
     }
 
     public double computeNetOilCredit(double bonus, double target, double oilConsumption){
-        return (target - oilConsumption) * bonus * sales;
+        return (target* bonus - oilConsumption) * sales;
     }
 
     public Double computeNetCarbonCredit(CarbonFactorProvider provider, double netOilCredit){

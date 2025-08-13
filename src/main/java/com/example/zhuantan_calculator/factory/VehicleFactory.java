@@ -4,6 +4,10 @@ import com.example.zhuantan_calculator.model.HeavyVehicle;
 import com.example.zhuantan_calculator.model.LightVehicle;
 import com.example.zhuantan_calculator.model.Vehicles;
 
+import java.util.Objects;
+import java.util.TreeMap;
+import java.util.Map;
+
 public class VehicleFactory {
 
     public static Vehicles createVehicleByType(String modelType) {
@@ -14,7 +18,7 @@ public class VehicleFactory {
         }
     }
 
-    public static Vehicles createVehicleFromData(int year, String enterprise, String model, Integer curbWeight, Integer grossWeight, Double testMass, String gvmArea, Double energy, String fuelType, String carbonGroup, Integer sales){
+    public static Vehicles createVehicleFromData(int year, String enterprise, String model, Integer curbWeight, Integer grossWeight, Double testMass, String gvmArea, Double energy, String fuelType, String carbonGroup, Integer sales, String PHEVFuel1Col, Double PHEVFuel1EnergyCol, String PHEVFuel2Col, Double PHEVFuel2EnergyCol){
         // 共同参数
         Vehicles vehicle = createVehicleByType(carbonGroup);
         vehicle.setYear(year);
@@ -24,13 +28,22 @@ public class VehicleFactory {
         vehicle.setEnergy(energy);
         vehicle.setFuelType(fuelType);
         vehicle.setCarbonGroup(carbonGroup);
-        if(carbonGroup.equals("轻型载货")|carbonGroup.equals("中重型载货")){
+        if ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) {
             vehicle.setCarbonModel("货车");
-        }else{
+        } else {
             vehicle.setCarbonModel(carbonGroup);
         }
-        if(sales == null){
-            sales = 0;
+
+        if ("PHEV".equals(fuelType)) {
+            Map<String, Double> fuelTypeEnergyMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+            if (PHEVFuel1Col != null) {
+                fuelTypeEnergyMap.put(PHEVFuel1Col, PHEVFuel1EnergyCol);
+            }
+            if (PHEVFuel2Col != null && !Objects.equals(PHEVFuel2Col, PHEVFuel1Col)) {
+                fuelTypeEnergyMap.put(PHEVFuel2Col, PHEVFuel2EnergyCol);
+            }
+            vehicle.setFuelTypeEnergyMap(fuelTypeEnergyMap);
         }
         vehicle.setSales(sales);
 
