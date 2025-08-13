@@ -9,12 +9,16 @@ import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.stage.FileChooser;
 import javafx.scene.control.ComboBox;
+import javafx.stage.Stage;
 import javafx.stage.Window;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.Tooltip;
@@ -117,6 +121,8 @@ public class MainController {
     private NewEnergyThresholdProvider newEnergyThresholdProvider;
     private TargetProvider targetProvider;
     private BonusProvider bonusProvider;
+
+
 
     // —— 可自定义的提示文案提供器 ——
     @FunctionalInterface
@@ -1353,5 +1359,13 @@ public class MainController {
             hideGvwWarning(lv);
         }
         vehicleTable.refresh();
+    }
+
+    @FXML
+    private void handleTreshold(ActionEvent event) throws java.io.IOException {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/Threshold_target.fxml"));
+        Parent root = loader.load();
+        Scene scene = ((javafx.scene.Node) event.getSource()).getScene();
+        scene.setRoot(root);
     }
 }

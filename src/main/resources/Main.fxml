@@ -4,7 +4,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<BorderPane xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/17.0.12" fx:controller="com.example.zhuantan_calculator.controller.MainController">
+<BorderPane xmlns="http://javafx.com/javafx/17.0.12" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.zhuantan_calculator.controller.MainController">
 
     <top>
         <HBox spacing="10">
@@ -14,21 +14,22 @@
             <Button fx:id="importButton" onAction="#handleImportExcel" text="导入Excel" />
             <Button fx:id="calculateButton" onAction="#calculateCredit" text="计算积分" />
             <Button fx:id="exportButton" onAction="#handleExportExcel" text="导出Excel" />
+            <Button fx:id="handleTreshold" onAction="#handleTreshold" text="修改规则" />
         </HBox>
     </top>
 
     <center>
-        <TableView fx:id="vehicleTable">
+        <TableView fx:id="vehicleTable" editable="true">
             <columns>
-                <TableColumn fx:id="yearCol" text="年份" />
-                <TableColumn fx:id="enterpriseCol" text="企业名称" />
-                <TableColumn fx:id="modelCol" text="车型" />
-                <TableColumn fx:id="fuelTypeCol" text="燃料类型" />
+                <TableColumn fx:id="yearCol" prefWidth="56.0" text="年份" />
+                <TableColumn fx:id="enterpriseCol" prefWidth="118.0" text="企业名称" />
+                <TableColumn fx:id="modelCol" prefWidth="73.0" text="车型" />
+                <TableColumn fx:id="fuelTypeCol" prefWidth="73.0" text="燃料类型" />
                 <TableColumn fx:id="energyCol" text="能耗" />
-                <TableColumn fx:id="PHEVFuel1Col" text="PHEV燃料1"/>
-                <TableColumn fx:id="PHEVFuel1EnergyCol" text="PHEV燃料1能耗"/>
-                <TableColumn fx:id="PHEVFuel2Col" text="PHEV燃料2"/>
-                <TableColumn fx:id="PHEVFuel2EnergyCol" text="PHEV燃料2能耗"/>
+                <TableColumn fx:id="PHEVFuel1Col" text="PHEV燃料1" />
+                <TableColumn fx:id="PHEVFuel1EnergyCol" text="PHEV燃料1能耗" />
+                <TableColumn fx:id="PHEVFuel2Col" text="PHEV燃料2" />
+                <TableColumn fx:id="PHEVFuel2EnergyCol" text="PHEV燃料2能耗" />
                 <TableColumn fx:id="curbWeightCol" text="整备质量/kg" />
                 <TableColumn fx:id="grossWeightCol" text="总质量/kg" />
                 <TableColumn fx:id="testMassCol" text="测试质量/kg" />
@@ -44,13 +45,13 @@
                 <TableColumn fx:id="target1Col" text="目标值（方法1）" />
                 <TableColumn fx:id="target3Col" text="目标值（方法3）" />
 
-                <TableColumn fx:id="penetrationRateCol" text="新能源渗透率"/>
+                <TableColumn fx:id="penetrationRateCol" text="新能源渗透率" />
                 <TableColumn fx:id="bonusCol" text="新能源调节系数" />
 
                 <TableColumn fx:id="netOilCreditMethod0Col" text="净油耗积分（方法0）" />
                 <TableColumn fx:id="netOilCreditMethod1Col" text="净油耗积分（方法1）" />
                 <TableColumn fx:id="netOilCreditMethod3Col" text="净油耗积分（方法3）" />
-                <TableColumn fx:id="carbonFuelTypeCol" text="转油类型"/>
+                <TableColumn fx:id="carbonFuelTypeCol" text="转油类型" />
                 <TableColumn fx:id="netCarbonCreditMethod0Col" text="净碳积分（方法0）" />
                 <TableColumn fx:id="netCarbonCreditMethod1Col" text="净碳积分（方法1）" />
                 <TableColumn fx:id="netCarbonCreditMethod3Col" text="净碳积分（方法3）" />
