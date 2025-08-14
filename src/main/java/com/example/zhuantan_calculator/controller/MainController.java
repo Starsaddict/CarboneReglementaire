@@ -25,6 +25,11 @@ import javafx.scene.control.Tooltip;
 import java.io.File;
 import java.text.DecimalFormat;
 
+import java.io.InputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+
 import javafx.util.converter.DoubleStringConverter;
 
 import com.example.zhuantan_calculator.model.Vehicles;
@@ -49,6 +54,7 @@ public class MainController {
 
     @FXML private Button importButton;
     @FXML private Button exportButton;
+    @FXML private Button templateButton;
     @FXML private TableView<Vehicles> vehicleTable;
     @FXML private TableColumn<Vehicles, Integer> yearCol ;
     @FXML private TableColumn<Vehicles, String> enterpriseCol;
@@ -120,8 +126,6 @@ public class MainController {
     private NewEnergyThresholdProvider newEnergyThresholdProvider;
     private TargetProvider targetProvider;
     private BonusProvider bonusProvider;
-
-
 
     // —— 可自定义的提示文案提供器 ——
     @FunctionalInterface
@@ -488,6 +492,8 @@ public class MainController {
         };
 
         exportButton.setOnAction(this::handleExportExcel);
+        templateButton.setOnAction(this::downloadTemplate);
+
 
         showBaseView();
 
@@ -677,7 +683,6 @@ public class MainController {
             target3Map.put(v, target3);
 
             penetrationMap.put(v,penetrationRate);
-            System.out.println("penetration rate : " + penetrationRate);
             bonusMap.put(v, bonus);
 
         }
@@ -1367,4 +1372,36 @@ public class MainController {
         Scene scene = ((javafx.scene.Node) event.getSource()).getScene();
         scene.setRoot(root);
     }
+
+    public void downloadTemplate(ActionEvent actionEvent) {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("导出模板");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel 文件", "*.xlsx"));
+        Window ownerWindow = importButton.getScene().getWindow();
+        File file = fileChooser.showSaveDialog(ownerWindow);
+        if (file != null) {
+            exportTemplate(file);
+        }
+    }
+
+    private void exportTemplate(File file) {
+        // 建议将模板文件放在: src/main/resources/templates/zhuantan_template.xlsx
+        // 打包后访问路径为类路径 "/templates/zhuantan_template.xlsx"
+        final String resourcePath = "/templates/zhuantan_template.xlsx";
+
+        try (InputStream in = getClass().getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                System.err.println("未在类路径中找到模板: " + resourcePath + "\n" +
+                        "请确认已将模板放在 src/main/resources/templates/zhuantan_template.xlsx，并确保资源被打包进 jar。");
+                return;
+            }
+            // 将模板二进制内容复制到用户选择的文件
+            Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("模板已导出至: " + file.getAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("导出模板失败: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
 }

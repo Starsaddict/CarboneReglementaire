@@ -15,6 +15,7 @@
             <Button fx:id="calculateButton" onAction="#calculateCredit" text="计算积分" />
             <Button fx:id="exportButton" onAction="#handleExportExcel" text="导出Excel" />
             <Button fx:id="handleTreshold" onAction="#handleTreshold" text="修改规则" />
+            <Button fx:id="templateButton" onAction="#downloadTemplate" text = "保存模板"/>
         </HBox>
     </top>
 

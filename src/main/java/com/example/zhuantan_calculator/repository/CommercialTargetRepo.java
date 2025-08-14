@@ -21,7 +21,7 @@ public class CommercialTargetRepo {
 
     public Double findTargetValue (int year, String carbonModel, String fuelType, int gvm, int method){
         try {
-            return entityManager
+            Double result =  entityManager
                     .createQuery("select c.targetValue from CommercialTarget c " +
                             "where c.year = :year " +
                             "and c.carbonModel = :carbonModel " +
@@ -35,7 +35,11 @@ public class CommercialTargetRepo {
                     .setParameter("gvm",gvm)
                     .setParameter("method",method)
                     .getSingleResult();
+            System.out.println("year: "+year+"carbonMode:"+ carbonModel + "fuelType: "+ fuelType + "gvm"+gvm + "method"+method+"result" + result);
+            return result;
         } catch (NoResultException e) {
+            System.out.println("year: "+year+"carbonMode:"+ carbonModel + "fuelType: "+ fuelType + "gvm"+gvm + "method"+method);
+            System.out.println("noResultException");
             return null;
         }
     }
@@ -88,4 +92,7 @@ public class CommercialTargetRepo {
             return null;
         }
     }
+
+
+
 }
