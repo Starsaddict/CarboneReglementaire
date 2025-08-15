@@ -1257,6 +1257,8 @@ public class MainController {
         target1Col.setVisible(false);
         target3Col.setVisible(false);
         bonusCol.setVisible(false);
+        penetrationRateCol.setVisible(false);
+        carbonFuelTypeCol.setVisible(false);
         netOilCreditMethod0Col.setVisible(false);
         netOilCreditMethod1Col.setVisible(false);
         netOilCreditMethod3Col.setVisible(false);
