@@ -1281,6 +1281,8 @@ public class MainController {
         PHEVFuel2EnergyCol.setVisible(false);
 
         // 计算类列显示
+        penetrationRateCol.setVisible(true);
+        carbonFuelTypeCol.setVisible(true);
         energyConsumptionMethod0Col.setVisible(true);
         energyConsumptionMethod1Col.setVisible(true);
         energyConsumptionMethod3Col.setVisible(true);
