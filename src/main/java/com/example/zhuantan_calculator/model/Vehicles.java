@@ -22,8 +22,10 @@ public abstract class Vehicles {
     private String fuelType;
 
     @Getter
-    @Setter
     private Double energy;
+    public void setEnergy(Double energy) {
+        this.energy = energy != null ? energy : 0.0;
+    }
 
     @Getter
     @Setter
@@ -118,17 +120,17 @@ public abstract class Vehicles {
         }});
     }
 
-    public void setPhevfuel1Energy(double val) {
+    public void setPhevfuel1Energy(Double val) {
         if (!"PHEV".equals(getFuelType())) return;
         if(getPhevfuel1() != null){
-            fuelTypeEnergyMap.put(getPhevfuel1(), val);
+            fuelTypeEnergyMap.put(getPhevfuel1(), (val != null) ? val : 0.0);
         }
     }
 
-    public void setPhevfuel2Energy(double val) {
+    public void setPhevfuel2Energy(Double val) {
         if (!"PHEV".equals(getFuelType())) return;
         if(getPhevfuel2() != null){
-            fuelTypeEnergyMap.put(getPhevfuel2(), val);
+            fuelTypeEnergyMap.put(getPhevfuel2(), (val != null) ? val : 0.0);
         }
     }
     private String getFuelKeyByIndex(int idx) {
