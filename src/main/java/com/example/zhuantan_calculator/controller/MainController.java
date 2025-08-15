@@ -216,49 +216,6 @@ public class MainController {
         vehicleTable.setItems(vehicles);
         // Set row factory to style entire row and show tooltip for warnings
 
-        /*
-        vehicleTable.setRowFactory(tv -> new TableRow<>() {
-            @Override
-            protected void updateItem(Vehicles item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setStyle("");
-                    setTooltip(null);
-                    setOnContextMenuRequested(null);
-                    setContextMenu(null);
-                } else {
-                    // 保持行样式为默认；行提示改为悬浮查看（如果需要，在未来可添加整行标红）
-                    setStyle("");
-                    // 动态悬浮提示，显示之前缓存的报错信息
-                    String latest = rowWarningMap.get(item);
-                    if (latest == null || latest.isEmpty()) {
-                        setTooltip(null);
-                        setOnContextMenuRequested(null);
-                        setContextMenu(null);
-                    } else {
-                        Tooltip tip = new Tooltip();
-                        tip.setShowDelay(javafx.util.Duration.millis(260)); // 行级稍慢显示
-                        tip.setHideDelay(javafx.util.Duration.millis(150)); // 行级稍快收起
-                        tip.setShowDuration(javafx.util.Duration.seconds(8)); // 显示时间更长
-                        tip.setOnShowing(e -> {
-                            String cur = rowWarningMap.get(item);
-                            if (cur == null || cur.isEmpty()) {
-                                tip.setText("");
-                            } else {
-                                tip.setText(warningMessageProvider.get(item, cur));
-                            }
-                        });
-                        tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(240,248,255,0.95); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
-                        setTooltip(tip);
-                        setOnContextMenuRequested(null);
-                        setContextMenu(null);
-                    }
-                }
-            }
-        });
-
-         */
-
         yearCol.setCellValueFactory(new PropertyValueFactory<>("year"));
         modelCol.setCellValueFactory(new PropertyValueFactory<>("model"));
         enterpriseCol.setCellValueFactory(new PropertyValueFactory<>("enterprise"));
@@ -516,7 +473,6 @@ public class MainController {
                 }
 
                 Double coeff = energyConversionService.computeConversionCoeff(fuelType, v.computeCarbonFuelType(), method);
-                System.out.println("fuelType: " + fuelType + " carbonFuelType" + v.computeCarbonFuelType() + " method: "+ method +  "\ncoeff: " + coeff);
                 if ("汽油".equals(fuelType) || "柴油".equals(fuelType)) {
                     coeff = 1.0;
                 }
@@ -947,14 +903,35 @@ public class MainController {
             try (FileOutputStream fos = new FileOutputStream(file)) {
                 workbook.write(fos);
             }
-            System.out.println("导出成功：" + file.getAbsolutePath());
+            javafx.scene.control.Alert ok = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+            ok.setTitle("导出成功");
+            ok.setHeaderText(null);
+            ok.setContentText("文件已保存至：\n" + file.getAbsolutePath());
+            ok.showAndWait();
         } catch (Exception e) {
             e.printStackTrace();
+            javafx.scene.control.Alert err = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
+            err.setTitle("导出失败");
+            err.setHeaderText(null);
+            err.setContentText("导出时发生错误：" + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            err.showAndWait();
         }
     }
 
     @FXML
     private void calculateCredit() {
+        // 计算前核验：若存在致命错误则阻断后续流程
+        if (crucialErrorList != null && !crucialErrorList.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("无法计算");
+            alert.setHeaderText(null);
+            alert.setContentText("有关键冲突没有解决");
+            alert.showAndWait();
+            crucialErrorList.stream()
+                    .forEach(v ->
+                            System.out.println(v.getModel()));
+            return;
+        }
         // 计算转碳能源类型
         Map<Vehicles, String> carbonFuelTypeMap = new HashMap<>();
 
@@ -1871,14 +1848,28 @@ public class MainController {
             if (in == null) {
                 System.err.println("未在类路径中找到模板: " + resourcePath + "\n" +
                         "请确认已将模板放在 src/main/resources/templates/zhuantan_template.xlsx，并确保资源被打包进 jar。");
+                javafx.scene.control.Alert warn = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
+                warn.setTitle("未找到模板");
+                warn.setHeaderText(null);
+                warn.setContentText("未在类路径中找到模板文件：" + resourcePath + "\n请确认模板已放入 src/main/resources/templates/zhuantan_template.xlsx 并随构建打包。");
+                warn.showAndWait();
                 return;
             }
             // 将模板二进制内容复制到用户选择的文件
             Files.copy(in, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("模板已导出至: " + file.getAbsolutePath());
+            javafx.scene.control.Alert ok = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+            ok.setTitle("导出成功");
+            ok.setHeaderText(null);
+            ok.setContentText("模板已保存至：\n" + file.getAbsolutePath());
+            ok.showAndWait();
         } catch (IOException e) {
             System.err.println("导出模板失败: " + e.getMessage());
             e.printStackTrace();
+            javafx.scene.control.Alert err = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
+            err.setTitle("导出失败");
+            err.setHeaderText(null);
+            err.setContentText("导出模板时发生错误：" + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            err.showAndWait();
         }
     }
 
