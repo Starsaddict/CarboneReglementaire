@@ -35,7 +35,6 @@ public class CommercialTargetRepo {
                     .setParameter("gvm",gvm)
                     .setParameter("method",method)
                     .getSingleResult();
-            System.out.println("year: "+year+"carbonMode:"+ carbonModel + "fuelType: "+ fuelType + "gvm"+gvm + "method"+method+"result" + result);
             return result;
         } catch (NoResultException e) {
             System.out.println("year: "+year+"carbonMode:"+ carbonModel + "fuelType: "+ fuelType + "gvm"+gvm + "method"+method);

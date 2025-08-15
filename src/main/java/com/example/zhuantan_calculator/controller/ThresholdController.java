@@ -25,6 +25,21 @@ import javafx.util.converter.DoubleStringConverter;
 import javafx.scene.control.cell.TextFieldTableCell;
 import java.lang.reflect.Method;
 import java.lang.reflect.Field;
+import javafx.stage.FileChooser;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import java.io.FileInputStream;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import jakarta.persistence.EntityTransaction;
 
 public class ThresholdController {
     @FXML private ChoiceBox<String> choiceBox;
@@ -207,7 +222,248 @@ public class ThresholdController {
         }
     }
 
+    private static Field[] fieldsForExport(Class<?> clazz) {
+        // Include all declared fields, including id, and keep declaration order
+        Field[] fields = clazz.getDeclaredFields();
+        for (Field f : fields) {
+            f.setAccessible(true);
+        }
+        return fields;
+    }
+
+    private static void writeSheet(Workbook wb, String sheetName, List<?> rows, Class<?> clazz) {
+        Sheet sheet = wb.createSheet(sheetName);
+        Field[] fields = fieldsForExport(clazz);
+
+        java.util.List<Field> exportFields = java.util.Arrays.stream(fields)
+                .filter(f -> !"id".equalsIgnoreCase(f.getName()))
+                .collect(java.util.stream.Collectors.toList());
+
+        // Header
+        Row header = sheet.createRow(0);
+        for (int i = 0; i < exportFields.size(); i++) {
+            org.apache.poi.ss.usermodel.Cell c = header.createCell(i);
+            c.setCellValue(exportFields.get(i).getName());
+        }
+
+        // Body
+        int r = 1;
+        for (Object rowObj : rows) {
+            Row row = sheet.createRow(r++);
+            for (int i = 0; i < exportFields.size(); i++) {
+                Field f = exportFields.get(i);
+                Object val = null;
+                try {
+                    val = f.get(rowObj);
+                } catch (IllegalAccessException ignored) { }
+                org.apache.poi.ss.usermodel.Cell c = row.createCell(i);
+                if (val == null) {
+                    c.setBlank();
+                } else if (val instanceof Number) {
+                    c.setCellValue(((Number) val).doubleValue());
+                } else if (val instanceof Boolean) {
+                    c.setCellValue((Boolean) val);
+                } else {
+                    c.setCellValue(String.valueOf(val));
+                }
+            }
+        }
+
+        // Autosize columns (safe upper bound)
+        for (int i = 0; i < exportFields.size(); i++) {
+            sheet.autoSizeColumn(i);
+        }
+    }
+
+    private static <T> List<T> readSheet(Workbook wb, String sheetName, Class<T> clazz) {
+        Sheet sheet = wb.getSheet(sheetName);
+        if (sheet == null) return List.of();
+
+        // Map header -> column index
+        Row header = sheet.getRow(0);
+        if (header == null) return List.of();
+        int lastCol = header.getLastCellNum();
+        java.util.Map<String,Integer> colIndex = new java.util.HashMap<>();
+        for (int c = 0; c < lastCol; c++) {
+            org.apache.poi.ss.usermodel.Cell hc = header.getCell(c);
+            if (hc != null) {
+                String name = hc.getStringCellValue();
+                if (name != null && !name.isBlank()) {
+                    colIndex.put(name.trim(), c);
+                }
+            }
+        }
+
+        Field[] fields = fieldsForExport(clazz);
+        DataFormatter fmt = new DataFormatter();
+        List<T> result = new java.util.ArrayList<>();
+
+        for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+
+            try {
+                T obj = clazz.getDeclaredConstructor().newInstance();
+                for (Field f : fields) {
+                    String fieldName = f.getName();
+                    // 默认跳过 id：避免与自增主键冲突
+                    if ("id".equalsIgnoreCase(fieldName)) continue;
+
+                    Integer cIdx = colIndex.get(fieldName);
+                    if (cIdx == null) continue;
+                    org.apache.poi.ss.usermodel.Cell cell = row.getCell(cIdx);
+                    String text = cell == null ? null : fmt.formatCellValue(cell).trim();
+                    if (text == null || text.isEmpty()) {
+                        // 写入 null
+                        f.set(obj, null);
+                    } else {
+                        Class<?> t = f.getType();
+                        try {
+                            if (t == String.class) {
+                                f.set(obj, text);
+                            } else if (t == Integer.class || t == int.class) {
+                                f.set(obj, Integer.valueOf(text.replace(",", "")));
+                            } else if (t == Double.class || t == double.class) {
+                                f.set(obj, Double.valueOf(text.replace(",", "")));
+                            } else if (t == Boolean.class || t == boolean.class) {
+                                f.set(obj, "true".equalsIgnoreCase(text) || "1".equals(text));
+                            } else {
+                                // 其他类型：先尝试直接设字符串，失败则忽略
+                                try { f.set(obj, text); } catch (Exception ignore) {}
+                            }
+                        } catch (Exception parseEx) {
+                            // 单元格内容与字段类型不匹配时，降级为 null
+                            f.set(obj, null);
+                        }
+                    }
+                }
+                result.add(obj);
+            } catch (Exception instEx) {
+                // 跳过不可实例化的行
+            }
+        }
+        return result;
+    }
+
+    private <T> void replaceAllInDb(Class<T> clazz, List<T> rows) {
+        EntityTransaction tx = em.getTransaction();
+        try {
+            tx.begin();
+            // 先清理持久化上下文，避免存在已管理的同类实体导致主键冲突
+            em.clear();
+
+            // 物理删除表中所有数据
+            em.createQuery("DELETE FROM " + clazz.getSimpleName()).executeUpdate();
+            em.flush();
+            // 再次清理，确保 Session 中没有残留实体（避免 NonUniqueObjectException）
+            em.clear();
+
+            // 批量插入新数据，确保 id 为空（让 @GeneratedValue 重新生成）
+            for (T row : rows) {
+                nullifyId(row);
+                em.persist(row);
+            }
+
+            tx.commit();
+        } catch (Exception e) {
+            if (tx.isActive()) tx.rollback();
+            throw e;
+        }
+    }
+
+    private static void nullifyId(Object entity) {
+        try {
+            Field f = entity.getClass().getDeclaredField("id");
+            f.setAccessible(true);
+            Class<?> t = f.getType();
+            if (t == Integer.class || t == Long.class) {
+                f.set(entity, null);
+            } else if (t == int.class) {
+                f.setInt(entity, 0);
+            } else if (t == long.class) {
+                f.setLong(entity, 0L);
+            }
+        } catch (NoSuchFieldException ignore) {
+            // 如果没有 id 字段，忽略
+        } catch (Exception ex) {
+            // 避免因个别实体设置 id 失败导致整体导入失败
+        }
+    }
 
     public void exportThreshold(ActionEvent actionEvent) {
+        // Collect current data from the four tables
+        List<CommercialTarget> targetRows = target.getItems();
+        List<CarbonFactor> factorRows = factor.getItems();
+        List<EnergyConversion> conversionRows = conversion.getItems();
+        List<NewEnergyThreshold> thresholdRows = threshold.getItems();
+
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导出四张表为Excel");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel 工作簿 (*.xlsx)", "*.xlsx"));
+
+        File file = chooser.showSaveDialog(choiceBox.getScene().getWindow());
+        if (file == null) return; // 用户取消
+
+        try (Workbook wb = new XSSFWorkbook(); FileOutputStream fos = new FileOutputStream(file)) {
+            writeSheet(wb, "CommercialTarget", targetRows, CommercialTarget.class);
+            writeSheet(wb, "CarbonFactor", factorRows, CarbonFactor.class);
+            writeSheet(wb, "EnergyConversion", conversionRows, EnergyConversion.class);
+            writeSheet(wb, "NewEnergyThreshold", thresholdRows, NewEnergyThreshold.class);
+
+            wb.write(fos);
+
+            Alert ok = new Alert(Alert.AlertType.INFORMATION);
+            ok.setHeaderText(null);
+            ok.setTitle("导出完成");
+            ok.setContentText("已成功导出到：\n" + file.getAbsolutePath());
+            ok.showAndWait();
+        } catch (IOException e) {
+            e.printStackTrace();
+            Alert err = new Alert(Alert.AlertType.ERROR);
+            err.setHeaderText("导出失败");
+            err.setContentText(e.getMessage());
+            err.showAndWait();
+        }
+    }
+
+    public void importThreshold(ActionEvent actionEvent) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导入Excel并覆盖四张表");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Excel 工作簿 (*.xlsx)", "*.xlsx"));
+
+        File file = chooser.showOpenDialog(choiceBox.getScene().getWindow());
+        if (file == null) return; // 用户取消
+
+        try (FileInputStream fis = new FileInputStream(file); Workbook wb = new XSSFWorkbook(fis)) {
+            // 读取四个工作表
+            List<CommercialTarget> targetRows = readSheet(wb, "CommercialTarget", CommercialTarget.class);
+            List<CarbonFactor> factorRows = readSheet(wb, "CarbonFactor", CarbonFactor.class);
+            List<EnergyConversion> conversionRows = readSheet(wb, "EnergyConversion", EnergyConversion.class);
+            List<NewEnergyThreshold> thresholdRows = readSheet(wb, "NewEnergyThreshold", NewEnergyThreshold.class);
+
+            // 事务性地覆盖数据库
+            replaceAllInDb(CommercialTarget.class, targetRows);
+            replaceAllInDb(CarbonFactor.class, factorRows);
+            replaceAllInDb(EnergyConversion.class, conversionRows);
+            replaceAllInDb(NewEnergyThreshold.class, thresholdRows);
+
+            // 刷新 TableView
+            target.setItems(FXCollections.observableArrayList(commercialTargetService.getAllCommercialTarget()));
+            factor.setItems(FXCollections.observableArrayList(carbonFactorService.getAllCarbonFactor()));
+            conversion.setItems(FXCollections.observableArrayList(energyConversionService.getAllEnergyConversion()));
+            threshold.setItems(FXCollections.observableArrayList(newEnergyThresoldService.getAllEnergyThreshold()));
+
+            Alert ok = new Alert(Alert.AlertType.INFORMATION);
+            ok.setHeaderText(null);
+            ok.setTitle("导入完成");
+            ok.setContentText("已覆盖数据库并刷新界面：\n" + file.getAbsolutePath());
+            ok.showAndWait();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Alert err = new Alert(Alert.AlertType.ERROR);
+            err.setHeaderText("导入失败");
+            err.setContentText(e.getMessage());
+            err.showAndWait();
+        }
     }
 }

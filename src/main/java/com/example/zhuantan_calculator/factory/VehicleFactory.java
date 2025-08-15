@@ -4,9 +4,7 @@ import com.example.zhuantan_calculator.model.HeavyVehicle;
 import com.example.zhuantan_calculator.model.LightVehicle;
 import com.example.zhuantan_calculator.model.Vehicles;
 
-import java.util.Objects;
-import java.util.TreeMap;
-import java.util.Map;
+import java.util.*;
 
 public class VehicleFactory {
 
@@ -20,14 +18,36 @@ public class VehicleFactory {
 
     public static Vehicles createVehicleFromData(int year, String enterprise, String model, Integer curbWeight, Integer grossWeight, Double testMass, String gvmArea, Double energy, String fuelType, String carbonGroup, Integer sales, String PHEVFuel1Col, Double PHEVFuel1EnergyCol, String PHEVFuel2Col, Double PHEVFuel2EnergyCol){
         // 共同参数
+        // 提前校验
+        List<String> legalCarbonGroup = Arrays.asList("轻型载货","中重型载货","客车","城市客车","N1","M2","牵引车","自卸车");
+        if (!legalCarbonGroup.contains(carbonGroup)) {
+            return null;
+        }
         Vehicles vehicle = createVehicleByType(carbonGroup);
-        vehicle.setYear(year);
+
+        List<Integer> legalYear =  Arrays.asList(2028,2029,2030);
+        if(legalYear.contains(year)){
+            vehicle.setYear(year);
+        }else{
+            vehicle.setYear(999999);
+        }
+
         vehicle.setEnterprise(enterprise);
         vehicle.setModel(model);
         vehicle.setGrossWeight(grossWeight);
         vehicle.setEnergy(energy);
-        vehicle.setFuelType(fuelType);
+
+        List<String> legalFuelType = Arrays.asList("PHEV","FCV","BEV","汽油","柴油","天然气","甲醇");
+        if (legalFuelType.contains(fuelType)) {
+            vehicle.setFuelType(fuelType);
+        }else{
+            vehicle.setFuelType("非法值");
+        }
+
         vehicle.setCarbonGroup(carbonGroup);
+
+
+
         if ("轻型载货".equals(carbonGroup) || "中重型载货".equals(carbonGroup)) {
             vehicle.setCarbonModel("货车");
         } else {

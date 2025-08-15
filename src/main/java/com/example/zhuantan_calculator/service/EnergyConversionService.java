@@ -42,6 +42,7 @@ public class EnergyConversionService {
         } else if ("柴油".equals(carbonEnergyType)) {
             return energyConversionRepo.findDieselCoeff(energyType);
         }
+        System.out.println("energyType:" + energyType +" carbonEnergyType : " +carbonEnergyType + " method : "+ method);
         return null ;
     }
 

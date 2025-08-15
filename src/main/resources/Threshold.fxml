@@ -13,6 +13,7 @@
             <Button onAction="#goBack" text="返回计算器" />
             <ChoiceBox fx:id="choiceBox" prefWidth="150.0" />
             <Button onAction="#exportThreshold" text="导出规则" />
+            <Button onAction="#importThreshold" text="导入规则" />
 
         </HBox>
     </top>
