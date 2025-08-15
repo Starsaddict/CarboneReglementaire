@@ -43,6 +43,7 @@ import org.apache.poi.ss.usermodel.Cell;
 import java.io.FileOutputStream;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.function.Supplier;
 
 public class MainController {
@@ -98,7 +99,14 @@ public class MainController {
     private final Map<Vehicles, String> warnYearMap = new HashMap<>();
     private final Map<Vehicles, String> warnHeavyGvwMap = new HashMap<>();
     private final Map<Vehicles, String> warnLightTestMassMap = new HashMap<>();
+    private final Map<Vehicles, String> warnFuelTypeMap = new HashMap<>();
+    private final Map<Vehicles, String> warnPHEVFuel1Map = new HashMap<>();
+    private final Map<Vehicles, String> warnPHEVFuel2Map = new HashMap<>();
     private final List<Vehicles> crucialErrorList = new ArrayList<>();
+    // 仅提示：能耗为0时的黄色提示（不进入crucialErrorList）
+    private final Map<Vehicles, String> hintTotalEnergyZeroMap = new HashMap<>();
+    private final Map<Vehicles, String> hintPHEV1EnergyZeroMap = new HashMap<>();
+    private final Map<Vehicles, String> hintPHEV2EnergyZeroMap = new HashMap<>();
     // Anchor map for GVW area cells to show PopOver at the exact cell
     private final java.util.Map<Vehicles, TableCell<Vehicles, String>> gvwAreaCellMap = new HashMap<>();
     // Anchor map for LightVehicle testMass cells to show Tooltip at the testMass cell
@@ -110,6 +118,7 @@ public class MainController {
 
     // 单元格错误高亮样式（淡红，不影响整行）
     private static final String CELL_ERROR_STYLE = "-fx-background-color: rgba(255,0,0,0.18);";
+    private static final String CELL_HINT_STYLE = "-fx-background-color: #fff4cc;"; // 浅黄色提示
 
     private EntityManagerFactory emf;
     private EntityManager em;
@@ -158,6 +167,18 @@ public class MainController {
         });
         tip.setStyle("-fx-background-radius: 8; -fx-background-color: rgba(245,245,245,0.98); -fx-text-fill: black; -fx-padding: 8; -fx-font-size: 12px;");
         return tip;
+    }
+
+    // 在所有错误Map均无此车辆时，才从 crucialErrorList 安全移除
+    private void maybeRemoveFromCrucialIfNoOtherErrors(Vehicles v) {
+        if (!warnYearMap.containsKey(v)
+                && !warnHeavyGvwMap.containsKey(v)
+                && !warnLightTestMassMap.containsKey(v)
+                && !warnFuelTypeMap.containsKey(v)
+                && !warnPHEVFuel1Map.containsKey(v)
+                && !warnPHEVFuel2Map.containsKey(v)) {
+            crucialErrorList.remove(v);
+        }
     }
 
     // —— Null-safe converters：空字符串 ⇒ null —— //
@@ -338,20 +359,19 @@ public class MainController {
                     warn = msg;
                     warnHeavyGvwMap.put(v, warn);
                     crucialErrorList.add(v);
-                }else{
+                } else {
                     warnHeavyGvwMap.remove(v);
-                    crucialErrorList.remove(v);
+                    maybeRemoveFromCrucialIfNoOtherErrors(v);
                 }
             } else if (v instanceof LightVehicle) {
                 warn = validateLightVehicleMass((LightVehicle) v);
                 if (warn != null) {
                     warnLightTestMassMap.put(v, warn);
                     crucialErrorList.add(v);
-                }else{
+                } else {
                     warnLightTestMassMap.remove(v);
-                    crucialErrorList.remove(v);
+                    maybeRemoveFromCrucialIfNoOtherErrors(v);
                 }
-
             }
 
             vehicleTable.refresh();
@@ -378,7 +398,7 @@ public class MainController {
                         try {
                             Vehicles prev = getTableView().getItems().get(getIndex());
                             testMassCellMap.remove(prev);
-                            crucialErrorList.remove(prev);
+                            maybeRemoveFromCrucialIfNoOtherErrors(prev);
                         } catch (Exception ignore) {}
                         return;
                     }
@@ -415,7 +435,7 @@ public class MainController {
                     crucialErrorList.add(v);
                 } else {
                     warnLightTestMassMap.remove(v);
-                    crucialErrorList.remove(v);
+                    maybeRemoveFromCrucialIfNoOtherErrors(v);
                 }
                 vehicleTable.refresh();
             }
@@ -433,6 +453,9 @@ public class MainController {
         // 让“年份”可编辑（所有车辆）
         yearCol.setEditable(true);
         setupYearComboCell();
+        // 让“燃料种类”可编辑
+        fuelTypeCol.setEditable(true);
+        setupFuelTypeComboCell();
 
         energyCol.setCellValueFactory(new PropertyValueFactory<>("energy"));
         PHEVFuel1Col.setCellValueFactory(cd ->
@@ -445,11 +468,24 @@ public class MainController {
         PHEVFuel2EnergyCol.setCellValueFactory(cd ->
                 new ReadOnlyObjectWrapper<>(cd.getValue().getPhevfuel2Energy()));
 
+        // 允许编辑PHEV燃料子列，设置ComboCell
+        PHEVFuel1Col.setEditable(true);
+        PHEVFuel2Col.setEditable(true);
+        setupPHEVFuel1ComboCell();
+        setupPHEVFuel2ComboCell();
+
         salesCol.setCellValueFactory(new PropertyValueFactory<>("sales"));
         carbonGroupCol.setCellValueFactory(new PropertyValueFactory<>("carbonGroup"));
 
 
         useDecimalDisplay(energyCol, "#,##0.00");
+        energyCol.setEditable(true);
+        setupTotalEnergyEditableCell();
+
+        PHEVFuel1EnergyCol.setEditable(true);
+        PHEVFuel2EnergyCol.setEditable(true);
+        setupPHEVFuel1EnergyEditableCell();
+        setupPHEVFuel2EnergyEditableCell();
 
         vehicleTable.setEditable(true);
         gvwAreaCol.setEditable(true);
@@ -522,6 +558,136 @@ public class MainController {
 
     }
 
+    private void setupFuelTypeComboCell() {
+        // 合法燃料种类列表
+        final List<String> legalFuelType = Arrays.asList("PHEV","FCV","BEV","汽油","柴油","天然气","甲醇");
+
+        fuelTypeCol.setCellFactory(col -> new TableCell<Vehicles, String>() {
+            private ComboBox<String> combo;
+
+            private void createCombo(String current) {
+                combo = new ComboBox<>();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setEditable(false); // 仅允许在合法列表中选择
+                combo.getItems().setAll(legalFuelType);
+                combo.getSelectionModel().select(current);
+                combo.setOnAction(e -> {
+                    String sel = combo.getSelectionModel().getSelectedItem();
+                    commitEdit(sel);
+                });
+                combo.focusedProperty().addListener((obs, oldV, newV) -> {
+                    if (!newV) {
+                        String sel = combo.getSelectionModel().getSelectedItem();
+                        if (!Objects.equals(sel, getItem())) {
+                            commitEdit(sel);
+                        }
+                    }
+                });
+            }
+
+            @Override
+            public void startEdit() {
+                super.startEdit();
+                Vehicles v = getTableView().getItems().get(getIndex());
+                createCombo(getItem());
+                setText(null);
+                setGraphic(combo);
+                combo.requestFocus();
+                combo.show();
+            }
+
+            @Override
+            public void cancelEdit() {
+                super.cancelEdit();
+                setText(getItem());
+                setGraphic(null);
+            }
+
+            @Override
+            protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) {
+                    setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                    setTooltip(null);
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
+                    return;
+                }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) {
+                    createCombo(value);
+                    setText(null);
+                    setGraphic(combo);
+                    // 编辑态按需上色，这里保持与year一致：仅非编辑态提示
+                } else {
+                    setText(value);
+                    setGraphic(null);
+                    if (warnFuelTypeMap.containsKey(v)) {
+                        setStyle(CELL_ERROR_STYLE);
+                        Tooltip tip = buildWarningTooltip(v, () -> warnFuelTypeMap.get(v));
+                        setTooltip(tip);
+                    } else {
+                        setStyle("");
+                        setTooltip(null);
+                    }
+                    setOnContextMenuRequested(null);
+                    setContextMenu(null);
+                }
+            }
+        });
+
+        // 提交与校验：只允许 legalFuelType 列表中的值
+        fuelTypeCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            String newVal = evt.getNewValue();
+            // 写回 model
+            v.setFuelType(newVal);
+
+            String warn = null;
+            if (newVal == null || !legalFuelType.contains(newVal)) {
+                warn = "燃料种类不合法：只能选择 " + String.join("/", legalFuelType);
+            }
+
+            if (warn != null) {
+                warnFuelTypeMap.put(v, warn);
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                // 仅在当前是燃料种类相关报错时移除
+                String prev = warnFuelTypeMap.get(v);
+                if (prev != null && prev.startsWith("燃料种类不合法")) {
+                    warnFuelTypeMap.remove(v);
+                }
+                // 若切换为非PHEV，清理子燃料相关告警
+                if (!"PHEV".equals(v.getFuelType())) {
+                    warnPHEVFuel1Map.remove(v);
+                    warnPHEVFuel2Map.remove(v);
+                }
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+
+            vehicleTable.refresh();
+        });
+
+
+        // 适度加宽
+        fuelTypeCol.setPrefWidth(110);
+    }
+    private void validateFuelTypeAfterImport() {
+        List<String> legalFuelType = Arrays.asList("PHEV","FCV","BEV","汽油","柴油","天然气","甲醇");
+        for (Vehicles v : vehiclesList) {
+            String ft = v.getFuelType();
+            if (ft == null || !legalFuelType.contains(ft)) {
+                warnFuelTypeMap.put(v, "燃料种类不合法：只能选择 " + String.join("/", legalFuelType));
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnFuelTypeMap.remove(v);
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+        }
+    }
+
     @FXML
     private void handleImportExcel() {
         FileChooser fileChooser = new FileChooser();
@@ -542,7 +708,7 @@ public class MainController {
             for (Map<String, String> row : rawRows) {
                 try {
                     Vehicles v = VehicleFactory.createVehicleFromData(
-                            parseIntSafe(emptyToNull(row.get("年份"))),
+                            parseYearSafe(emptyToNull(row.get("年份"))),
                             emptyToNull(row.get("车辆生产企业")),
                             emptyToNull(row.get("车辆型号")),
                             parseIntSafe(emptyToNull(row.get("整备质量/kg"))),
@@ -576,14 +742,72 @@ public class MainController {
             showBaseView();
             validateGvwAfterImport();
             validateLightAfterImport();
+            validateYearAfterImport();
+            validateFuelTypeAfterImport();
+            validatePHEVSubFuelsAfterImport();
+            validateZeroEnergyHintsAfterImport();
+            vehicleTable.refresh();
+    // 仅提示：总能耗(非PHEV)或PHEV子能耗为0时标黄提示（不加入crucialErrorList）
+
         }
     }
+
+    private void validateZeroEnergyHintsAfterImport() {
+        for (Vehicles v : vehiclesList) {
+            // 总能耗：仅对非PHEV
+            Double e = v.getEnergy();
+            if (!"PHEV".equals(v.getFuelType()) && e != null && e == 0.0) {
+                hintTotalEnergyZeroMap.put(v, "数值为0，请检查");
+            } else {
+                hintTotalEnergyZeroMap.remove(v);
+            }
+            // PHEV 子能耗 1
+            Double e1 = v.getPhevfuel1Energy();
+            if (e1 != null && e1 == 0.0) {
+                hintPHEV1EnergyZeroMap.put(v, "数值为0，请检查");
+            } else {
+                hintPHEV1EnergyZeroMap.remove(v);
+            }
+            // PHEV 子能耗 2
+            Double e2 = v.getPhevfuel2Energy();
+            if (e2 != null && e2 == 0.0) {
+                hintPHEV2EnergyZeroMap.put(v, "数值为0，请检查");
+            } else {
+                hintPHEV2EnergyZeroMap.remove(v);
+            }
+        }
+    }
+
+
+    private Integer parseYearSafe(String value) {
+        if (value == null) return null;
+        String s = value.trim();
+        if (s.isEmpty()) return null;
+
+        // 提取所有数字，兼容“2028年”“2028/07”“2028-01-01”等
+        s = s.replaceAll("[^0-9]", "");
+        if (s.isEmpty()) return null;
+
+        // 仅使用前4位作为年份；不足4位视为无效
+        if (s.length() >= 4) {
+            s = s.substring(0, 4);
+        } else {
+            return null;
+        }
+        try {
+            return Integer.parseInt(s);
+        } catch (Exception e) {
+            return null;
+        }
+
+    }
+
     private Integer parseIntSafe(String value) {
         if(value == null || value.isEmpty()) {
             return null;
         }
         if(value.contains("年")) {
-            value = value.substring(0,3);
+            value = value.substring(0,4);
         }
         try {
             return (int)Double.parseDouble(value);
@@ -599,6 +823,22 @@ public class MainController {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    // 在 calculate 之后提示错误行
+    private void showErrorRowsAlertIfAny() {
+        if (errorRowIndex == null || errorRowIndex.isEmpty()) return;
+        String list = errorRowIndex.stream()
+                .sorted()
+                .map(Object::toString)
+                .collect(Collectors.joining("，"));
+        int n = errorRowIndex.size();
+        String msg = "第" + list + "行、共" + n + "行出错了，请检查以防影响计算结果";
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle("发现错误行");
+        alert.setHeaderText(null);
+        alert.setContentText(msg);
+        alert.showAndWait();
     }
 
     @FXML
@@ -827,6 +1067,7 @@ public class MainController {
         // 3) 刷新表格显示
         vehicleTable.refresh();
         showComputedView();
+        showErrorRowsAlertIfAny();
     }
 
     private Double parseDoubleSafe(String value) {
@@ -834,7 +1075,12 @@ public class MainController {
             return null;
         }
         try {
-            return Double.parseDouble(value);
+            double result = Double.parseDouble(value);
+            if(result >= 0){
+                return result;
+            }else{
+                return 0.0;
+            }
         } catch (Exception e) {
             return null;
         }
@@ -1045,7 +1291,7 @@ public class MainController {
                     if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
                 } else {
                     warnHeavyGvwMap.remove(v);
-                    crucialErrorList.remove(v);
+                    maybeRemoveFromCrucialIfNoOtherErrors(v);
                 }
                 vehicleTable.refresh();
             }
@@ -1120,12 +1366,13 @@ public class MainController {
                     setText(value == null ? "" : String.valueOf(value));
                     setGraphic(null);
                     if (warnYearMap.containsKey(v)) {
-                        setStyle(CELL_ERROR_STYLE);   // 只上色
+                        setStyle(CELL_ERROR_STYLE);
+                        Tooltip tip = buildWarningTooltip(v, () -> warnYearMap.get(v));
+                        setTooltip(tip);
                     } else {
                         setStyle("");
+                        setTooltip(null);
                     }
-                    // 不挂 Tooltip / ContextMenu
-                    setTooltip(null);
                     setOnContextMenuRequested(null);
                     setContextMenu(null);
                 }
@@ -1146,18 +1393,18 @@ public class MainController {
 
             if (warn != null) {
                 warnYearMap.put(v, warn);
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
             } else {
                 // 仅在当前是年份相关报错时移除，避免覆盖其它类型告警
                 String prev = warnYearMap.get(v);
                 if (prev != null && prev.startsWith("年份不合法")) {
                     warnYearMap.remove(v);
                 }
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
             }
 
-            // 刷新以触发样式与提示
             vehicleTable.refresh();
         });
-
         // 更易点中编辑，适度加宽
         yearCol.setPrefWidth(90);
     }
@@ -1196,7 +1443,20 @@ public class MainController {
                 }
             }
         }
+    }
 
+    private void validateYearAfterImport() {
+        List<Integer> allowed = Arrays.asList(2028, 2029, 2030);
+        for (Vehicles v : vehiclesList) {
+            Integer y = v.getYear();
+            if (!allowed.contains(y)) {
+                warnYearMap.put(v, "年份不合法：只允许 2028 / 2029 / 2030");
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnYearMap.remove(v);
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+        }
     }
 
     private String validateLightVehicleMass(LightVehicle lv) {
@@ -1234,6 +1494,204 @@ public class MainController {
         return null;
     }
 
+    // 校验PHEV子燃料合法性
+    private void validatePHEVSubFuelsAfterImport() {
+        List<String> legalPHEVFuelType = Arrays.asList("电","甲醇","汽油","柴油");
+        for (Vehicles v : vehiclesList) {
+            // 仅在主燃料类型为 PHEV 时校验
+            if (!"PHEV".equals(v.getFuelType())) {
+                warnPHEVFuel1Map.remove(v);
+                warnPHEVFuel2Map.remove(v);
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+                continue;
+            }
+            String f1 = v.getPhevfuel1();
+            String f2 = v.getPhevfuel2();
+
+            boolean f1Bad = (f1 == null || !legalPHEVFuelType.contains(f1));
+            if (f1Bad) {
+                warnPHEVFuel1Map.put(v, "PHEV燃料1不合法：只能选择 " + String.join("/", legalPHEVFuelType));
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnPHEVFuel1Map.remove(v);
+            }
+
+            boolean f2Bad = false;
+            if (f2 != null && !f2.isEmpty()) {
+                if (!legalPHEVFuelType.contains(f2)) {
+                    f2Bad = true;
+                }
+            }
+            if (f2Bad) {
+                warnPHEVFuel2Map.put(v, "PHEV燃料2不合法：只能选择 " + String.join("/", legalPHEVFuelType));
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnPHEVFuel2Map.remove(v);
+            }
+
+            if (!warnPHEVFuel1Map.containsKey(v) && !warnPHEVFuel2Map.containsKey(v)) {
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+        }
+    }
+    // 设置PHEV燃料1 ComboCell
+    private void setupPHEVFuel1ComboCell() {
+        final List<String> legal = Arrays.asList("电","甲醇","汽油","柴油");
+        PHEVFuel1Col.setCellFactory(col -> new TableCell<Vehicles, String>() {
+            private ComboBox<String> combo;
+            private void createCombo(String current) {
+                combo = new ComboBox<>();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setEditable(false);
+                combo.getItems().setAll(legal);
+                combo.getSelectionModel().select(current);
+                combo.setOnAction(e -> commitEdit(combo.getSelectionModel().getSelectedItem()));
+                combo.focusedProperty().addListener((obs, oldV, newV) -> {
+                    if (!newV) {
+                        String sel = combo.getSelectionModel().getSelectedItem();
+                        if (!Objects.equals(sel, getItem())) commitEdit(sel);
+                    }
+                });
+            }
+            @Override public void startEdit() { super.startEdit(); createCombo(getItem()); setText(null); setGraphic(combo); combo.requestFocus(); combo.show(); }
+            @Override public void cancelEdit() { super.cancelEdit(); setText(getItem()); setGraphic(null); }
+            @Override protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) { setText(null); setGraphic(null); setStyle(""); setTooltip(null); return; }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) {
+                    createCombo(value); setText(null); setGraphic(combo);
+                } else {
+                    setText(value); setGraphic(null);
+                    if (warnPHEVFuel1Map.containsKey(v)) { setStyle(CELL_ERROR_STYLE); setTooltip(buildWarningTooltip(v, () -> warnPHEVFuel1Map.get(v))); }
+                    else { setStyle(""); setTooltip(null); }
+                }
+            }
+        });
+        PHEVFuel1Col.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            String newVal = evt.getNewValue();
+            v.setPhevfuel1(newVal);
+
+            if (!"PHEV".equals(v.getFuelType())) {
+                // 非PHEV：清理本列与子燃料2报错，并尝试安全移出
+                warnPHEVFuel1Map.remove(v);
+                warnPHEVFuel2Map.remove(v);
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+                vehicleTable.refresh();
+                return;
+            }
+
+            final List<String> legalList = legal;
+            // 关键：读取 setter 后**规范化**的当前值，避免排序/去重导致的错位
+            String f1 = v.getPhevfuel1();
+            String f2 = v.getPhevfuel2();
+
+            // 校验 fuel1 合法性
+            if (f1 == null || !legalList.contains(f1)) {
+                warnPHEVFuel1Map.put(v, "PHEV燃料1不合法：只能选择 " + String.join("/", legalList));
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnPHEVFuel1Map.remove(v);
+            }
+
+            // 校验 fuel2（仅合法性；与 fuel1 相同的情况由工厂/Setter 归一化）
+            if (f2 != null && !f2.isEmpty() && !legalList.contains(f2)) {
+                warnPHEVFuel2Map.put(v, "PHEV燃料2不合法：只能选择 " + String.join("/", legalList));
+                if (!crucialErrorList.contains(v)) crucialErrorList.add(v);
+            } else {
+                warnPHEVFuel2Map.remove(v);
+            }
+
+            if (!warnPHEVFuel1Map.containsKey(v) && !warnPHEVFuel2Map.containsKey(v)) {
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+
+            vehicleTable.refresh();
+        });
+        PHEVFuel1Col.setPrefWidth(110);
+    }
+
+    // 设置PHEV燃料2 ComboCell
+    private void setupPHEVFuel2ComboCell() {
+        final List<String> legal = Arrays.asList("电","甲醇","汽油","柴油");
+        PHEVFuel2Col.setCellFactory(col -> new TableCell<Vehicles, String>() {
+            private ComboBox<String> combo;
+            private void createCombo(String current) {
+                combo = new ComboBox<>();
+                combo.setMaxWidth(Double.MAX_VALUE);
+                combo.setEditable(false);
+                combo.getItems().setAll(legal);
+                combo.getSelectionModel().select(current);
+                combo.setOnAction(e -> commitEdit(combo.getSelectionModel().getSelectedItem()));
+                combo.focusedProperty().addListener((obs, oldV, newV) -> {
+                    if (!newV) {
+                        String sel = combo.getSelectionModel().getSelectedItem();
+                        if (!Objects.equals(sel, getItem())) commitEdit(sel);
+                    }
+                });
+            }
+            @Override public void startEdit() { super.startEdit(); createCombo(getItem()); setText(null); setGraphic(combo); combo.requestFocus(); combo.show(); }
+            @Override public void cancelEdit() { super.cancelEdit(); setText(getItem()); setGraphic(null); }
+            @Override protected void updateItem(String value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) { setText(null); setGraphic(null); setStyle(""); setTooltip(null); return; }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) {
+                    createCombo(value); setText(null); setGraphic(combo);
+                } else {
+                    setText(value); setGraphic(null);
+                    if (warnPHEVFuel2Map.containsKey(v)) { setStyle(CELL_ERROR_STYLE); setTooltip(buildWarningTooltip(v, () -> warnPHEVFuel2Map.get(v))); }
+                    else { setStyle(""); setTooltip(null); }
+                }
+            }
+        });
+        PHEVFuel2Col.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            String newVal = evt.getNewValue();
+            v.setPhevfuel2(newVal);
+
+            if (!"PHEV".equals(v.getFuelType())) {
+                // 非PHEV：清理本列与子燃料1报错，并尝试安全移出
+                warnPHEVFuel2Map.remove(v);
+                warnPHEVFuel1Map.remove(v);
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+                vehicleTable.refresh();
+                return;
+            }
+
+            final List<String> legalList = legal;
+            // 关键：读取 setter 后**规范化**的当前值，避免排序/去重导致的错位
+            String f1 = v.getPhevfuel1();
+            String f2 = v.getPhevfuel2();
+
+            String warn1 = null, warn2 = null;
+            if (f1 == null || !legalList.contains(f1)) {
+                warn1 = "PHEV燃料1不合法：只能选择 " + String.join("/", legalList);
+            }
+            if (f2 != null && !f2.isEmpty() && !legalList.contains(f2)) {
+                warn2 = "PHEV燃料2不合法：只能选择 " + String.join("/", legalList);
+            }
+
+            if (warn1 != null) { warnPHEVFuel1Map.put(v, warn1); if (!crucialErrorList.contains(v)) crucialErrorList.add(v); } else { warnPHEVFuel1Map.remove(v); }
+            if (warn2 != null) { warnPHEVFuel2Map.put(v, warn2); if (!crucialErrorList.contains(v)) crucialErrorList.add(v); } else { warnPHEVFuel2Map.remove(v); }
+
+            if (!warnPHEVFuel1Map.containsKey(v) && !warnPHEVFuel2Map.containsKey(v)) {
+                maybeRemoveFromCrucialIfNoOtherErrors(v);
+            }
+
+            // 新增：若从无到有创建了 PHEV 燃料2，通常其能耗会默认为 0；此处给出黄色提示（仅提示，不计入致命错误）
+            Double e2 = v.getPhevfuel2Energy();
+            if (e2 != null && e2 == 0.0) {
+                hintPHEV2EnergyZeroMap.put(v, "数值为0，请检查");
+            } else {
+                hintPHEV2EnergyZeroMap.remove(v);
+            }
+
+            vehicleTable.refresh();
+        });
+        PHEVFuel2Col.setPrefWidth(110);
+    }
     private void showBaseView() {
         // 基础信息列显示
         fuelTypeCol.setVisible(true);
@@ -1257,6 +1715,8 @@ public class MainController {
         target1Col.setVisible(false);
         target3Col.setVisible(false);
         bonusCol.setVisible(false);
+        penetrationRateCol.setVisible(false);
+        carbonFuelTypeCol.setVisible(false);
         netOilCreditMethod0Col.setVisible(false);
         netOilCreditMethod1Col.setVisible(false);
         netOilCreditMethod3Col.setVisible(false);
@@ -1281,6 +1741,8 @@ public class MainController {
         PHEVFuel2EnergyCol.setVisible(false);
 
         // 计算类列显示
+        penetrationRateCol.setVisible(true);
+        carbonFuelTypeCol.setVisible(true);
         energyConsumptionMethod0Col.setVisible(true);
         energyConsumptionMethod1Col.setVisible(true);
         energyConsumptionMethod3Col.setVisible(true);
@@ -1418,6 +1880,122 @@ public class MainController {
             System.err.println("导出模板失败: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    // 总能耗：允许编辑；非PHEV且为0时黄标提示
+    private void setupTotalEnergyEditableCell() {
+        energyCol.setCellFactory(col -> new TableCell<Vehicles, Double>() {
+            private final TextField tf = new TextField();
+            private boolean committing = false;
+            private void begin(Double cur) {
+                tf.setText(cur == null ? "" : (cur % 1 == 0 ? String.valueOf(cur.intValue()) : String.valueOf(cur)));
+                tf.setOnAction(e -> commitFromField());
+                tf.focusedProperty().addListener((o, ov, nv) -> { if (!nv) commitFromField(); });
+                setText(null); setGraphic(tf); tf.requestFocus(); tf.selectAll();
+            }
+            private void commitFromField() {
+                if (committing) return; committing = true;
+                try {
+                    Double parsed = parseDoubleSafe(emptyToNull(tf.getText()));
+                    commitEdit(parsed);
+                } finally { committing = false; }
+            }
+            @Override public void startEdit() { super.startEdit(); begin(getItem()); }
+            @Override public void cancelEdit() { super.cancelEdit(); setText(format(getItem())); setGraphic(null); }
+            private String format(Double v) { return v == null ? null : (new java.text.DecimalFormat("0.###").format(v)); }
+            @Override protected void updateItem(Double value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) { setText(null); setGraphic(null); setStyle(""); setTooltip(null); return; }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) { begin(value); return; }
+                setText(format(value)); setGraphic(null);
+                if (hintTotalEnergyZeroMap.containsKey(v)) {
+                    setStyle(CELL_HINT_STYLE);
+                    setTooltip(buildWarningTooltip(v, () -> hintTotalEnergyZeroMap.get(v)));
+                } else { setStyle(""); setTooltip(null); }
+            }
+        });
+        energyCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Double parsed = parseDoubleSafe(evt.getNewValue() == null ? null : String.valueOf(evt.getNewValue()));
+            v.setEnergy(parsed);
+            if (!"PHEV".equals(v.getFuelType()) && parsed != null && parsed == 0.0) {
+                hintTotalEnergyZeroMap.put(v, "数值为0，请检查");
+            } else {
+                hintTotalEnergyZeroMap.remove(v);
+            }
+            vehicleTable.refresh();
+        });
+    }
+
+    // PHEV燃料1能耗：允许编辑；为0时黄标提示
+    private void setupPHEVFuel1EnergyEditableCell() {
+        PHEVFuel1EnergyCol.setCellFactory(col -> new TableCell<Vehicles, Double>() {
+            private final TextField tf = new TextField();
+            private boolean committing = false;
+            private void begin(Double cur) {
+                tf.setText(cur == null ? "" : (cur % 1 == 0 ? String.valueOf(cur.intValue()) : String.valueOf(cur)));
+                tf.setOnAction(e -> commitFromField());
+                tf.focusedProperty().addListener((o, ov, nv) -> { if (!nv) commitFromField(); });
+                setText(null); setGraphic(tf); tf.requestFocus(); tf.selectAll();
+            }
+            private void commitFromField() { if (committing) return; committing = true; try { commitEdit(parseDoubleSafe(emptyToNull(tf.getText()))); } finally { committing = false; } }
+            @Override public void startEdit() { super.startEdit(); begin(getItem()); }
+            @Override public void cancelEdit() { super.cancelEdit(); setText(format(getItem())); setGraphic(null); }
+            private String format(Double v) { return v == null ? null : (new java.text.DecimalFormat("0.###").format(v)); }
+            @Override protected void updateItem(Double value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) { setText(null); setGraphic(null); setStyle(""); setTooltip(null); return; }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) { begin(value); return; }
+                setText(format(value)); setGraphic(null);
+                if (hintPHEV1EnergyZeroMap.containsKey(v)) { setStyle(CELL_HINT_STYLE); setTooltip(buildWarningTooltip(v, () -> hintPHEV1EnergyZeroMap.get(v))); }
+                else { setStyle(""); setTooltip(null); }
+            }
+        });
+        PHEVFuel1EnergyCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Double parsed = parseDoubleSafe(evt.getNewValue() == null ? null : String.valueOf(evt.getNewValue()));
+            v.setPhevfuel1Energy(parsed);
+            if (parsed != null && parsed == 0.0) { hintPHEV1EnergyZeroMap.put(v, "数值为0，请检查"); }
+            else { hintPHEV1EnergyZeroMap.remove(v); }
+            vehicleTable.refresh();
+        });
+    }
+
+    // PHEV燃料2能耗：允许编辑；为0时黄标提示
+    private void setupPHEVFuel2EnergyEditableCell() {
+        PHEVFuel2EnergyCol.setCellFactory(col -> new TableCell<Vehicles, Double>() {
+            private final TextField tf = new TextField();
+            private boolean committing = false;
+            private void begin(Double cur) {
+                tf.setText(cur == null ? "" : (cur % 1 == 0 ? String.valueOf(cur.intValue()) : String.valueOf(cur)));
+                tf.setOnAction(e -> commitFromField());
+                tf.focusedProperty().addListener((o, ov, nv) -> { if (!nv) commitFromField(); });
+                setText(null); setGraphic(tf); tf.requestFocus(); tf.selectAll();
+            }
+            private void commitFromField() { if (committing) return; committing = true; try { commitEdit(parseDoubleSafe(emptyToNull(tf.getText()))); } finally { committing = false; } }
+            @Override public void startEdit() { super.startEdit(); begin(getItem()); }
+            @Override public void cancelEdit() { super.cancelEdit(); setText(format(getItem())); setGraphic(null); }
+            private String format(Double v) { return v == null ? null : (new java.text.DecimalFormat("0.###").format(v)); }
+            @Override protected void updateItem(Double value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty) { setText(null); setGraphic(null); setStyle(""); setTooltip(null); return; }
+                Vehicles v = getTableView().getItems().get(getIndex());
+                if (isEditing()) { begin(value); return; }
+                setText(format(value)); setGraphic(null);
+                if (hintPHEV2EnergyZeroMap.containsKey(v)) { setStyle(CELL_HINT_STYLE); setTooltip(buildWarningTooltip(v, () -> hintPHEV2EnergyZeroMap.get(v))); }
+                else { setStyle(""); setTooltip(null); }
+            }
+        });
+        PHEVFuel2EnergyCol.setOnEditCommit(evt -> {
+            Vehicles v = evt.getRowValue();
+            Double parsed = parseDoubleSafe(evt.getNewValue() == null ? null : String.valueOf(evt.getNewValue()));
+            v.setPhevfuel2Energy(parsed);
+            if (parsed != null && parsed == 0.0) { hintPHEV2EnergyZeroMap.put(v, "数值为0，请检查"); }
+            else { hintPHEV2EnergyZeroMap.remove(v); }
+            vehicleTable.refresh();
+        });
     }
 
 }

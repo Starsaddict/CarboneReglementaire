@@ -56,17 +56,22 @@ public class VehicleFactory {
 
         if ("PHEV".equals(fuelType)) {
             Map<String, Double> fuelTypeEnergyMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-
-            if (PHEVFuel1Col != null) {
-                fuelTypeEnergyMap.put(PHEVFuel1Col, PHEVFuel1EnergyCol);
+            List<String> legalPHEVFuelType = Arrays.asList("电","甲醇","汽油","柴油");
+            // 校验燃料1
+            if (PHEVFuel1Col != null && legalPHEVFuelType.contains(PHEVFuel1Col)) {
+                fuelTypeEnergyMap.put(PHEVFuel1Col, (PHEVFuel1EnergyCol != null ? PHEVFuel1EnergyCol : 0.0));
+            } else {
+                fuelTypeEnergyMap.put("非法燃料1", (PHEVFuel1EnergyCol != null ? PHEVFuel1EnergyCol : 0.0));
             }
-            if (PHEVFuel2Col != null && !Objects.equals(PHEVFuel2Col, PHEVFuel1Col)) {
-                fuelTypeEnergyMap.put(PHEVFuel2Col, PHEVFuel2EnergyCol);
+            // 校验燃料2（允许为空，但若有则必须不同且合法）
+            if (PHEVFuel2Col != null && !PHEVFuel2Col.isEmpty() && !Objects.equals(PHEVFuel2Col, PHEVFuel1Col) && legalPHEVFuelType.contains(PHEVFuel2Col)) {
+                fuelTypeEnergyMap.put(PHEVFuel2Col, (PHEVFuel2EnergyCol != null ? PHEVFuel2EnergyCol : 0.0));
+            } else if (PHEVFuel2Col != null && !PHEVFuel2Col.isEmpty()) {
+                fuelTypeEnergyMap.put("非法燃料2", (PHEVFuel2EnergyCol != null ? PHEVFuel2EnergyCol : 0.0));
             }
             vehicle.setFuelTypeEnergyMap(fuelTypeEnergyMap);
         }
-        vehicle.setSales(sales);
-
+        vehicle.setSales(sales >= 0 ? sales : 0);
         //轻型车
         if( vehicle instanceof LightVehicle){
             ((LightVehicle)vehicle).setCurbWeight(curbWeight);
